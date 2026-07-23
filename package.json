@@ -1,0 +1,16 @@
+{
+  "name": "amparo-social",
+  "version": "1.0.0",
+  "description": "Amparo - Plataforma de Envelhecimento Ativo e Inclusão Social via Telegram",
+  "main": "api/webhook.js",
+  "scripts": {
+    "dev": "node api/webhook.js",
+    "start": "node api/webhook.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}
