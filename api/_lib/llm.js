@@ -2,6 +2,9 @@
  * ── LLM Gateway ─────────────────────────────────────────────────
  * Processa mensagens usando OpenCode Zen (ou OpenRouter como fallback).
  * Usa o prompt definido em prompt.js para guiar o comportamento da IA.
+ *
+ * Retorna a resposta CRUA da IA (com marcadores [[TOOL:params]]).
+ * O webhook é responsável por interpretar os marcadores e limpar o texto.
  */
 
 const { PROMPT } = require('./prompt');
@@ -28,8 +31,6 @@ if (process.env.OPENROUTER_API_KEY) {
 }
 
 // ── Cache de sessões (em memória) ─────────────────────────────
-// Vercel serverless: cada instância tem seu próprio cache.
-// Para produção, usar Redis ou PostgreSQL.
 const sessions = new Map();
 
 /**
@@ -41,7 +42,7 @@ function getSession(chatId) {
   if (!sessions.has(chatId)) {
     sessions.set(chatId, {
       history: [],
-      user: null,     // { nome, bairro, interesses }
+      user: null,
       pontos: 0,
       missoes: [],
     });
@@ -50,7 +51,21 @@ function getSession(chatId) {
 }
 
 /**
- * Chama um provedor LLM com as mensagens do histórico.
+ * Remove os marcadores de ferramenta do texto da IA.
+ * Ex: "[[RECOMENDAR:centro:cultura]] Que tal..." → "Que tal..."
+ */
+function cleanToolMarkers(text) {
+  return text
+    .replace(/\[\[RECOMENDAR:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[MISSAO:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[PONTOS:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[CONFIRMAR:[^\]]+\]\]\s*/g, '')
+    .trim();
+}
+
+/**
+ * Chama um provedor LLM.
+ * @returns {string|null} — null se o conteúdo veio vazio (sinaliza fallback)
  */
 async function callProvider(provider, messages) {
   const body = {
@@ -83,8 +98,9 @@ async function callProvider(provider, messages) {
   const data = await res.json();
   const content = data.choices?.[0]?.message?.content;
 
+  // Se veio vazio (DeepSeek às vezes retorna reasoning_content vazio),
+  // tenta uma vez com retry
   if (!content || content.trim() === '') {
-    // Retry uma vez
     const retryRes = await fetch(provider.url, {
       method: 'POST',
       headers: {
@@ -100,13 +116,16 @@ async function callProvider(provider, messages) {
         return retryContent;
       }
     }
+    return null; // sinaliza para tentar próximo provider
   }
 
-  return content || '❌ Sem resposta da IA.';
+  return content;
 }
 
 /**
  * Processa a mensagem do usuário com fallback entre provedores.
+ * Retorna a resposta CRUA (com marcadores [[TOOL:params]] inclusos).
+ *
  * @param {string} userMessage
  * @param {object} session
  * @returns {Promise<string>}
@@ -134,21 +153,27 @@ async function processWithLLM(userMessage, session) {
       try {
         const reply = await callProvider(provider, messages);
 
-        // Limpa o formato de ferramenta da resposta (se veio junto com texto)
-        const cleanReply = reply
-          .replace(/\[\[RECOMENDAR:[^\]]+\]\]\s*/g, '')
-          .replace(/\[\[MISSAO:[^\]]+\]\]\s*/g, '')
-          .replace(/\[\[PONTOS:[^\]]+\]\]\s*/g, '')
-          .replace(/\[\[CONFIRMAR:[^\]]+\]\]\s*/g, '')
-          .trim() || reply;
+        // Provider retornou null (conteúdo vazio) → tenta próximo
+        if (reply === null) {
+          continue;
+        }
 
-        return cleanReply;
+        // Salva no histórico (versão limpa, sem marcadores)
+        const displayText = cleanToolMarkers(reply);
+        session.history.push({ role: 'user', content: userMessage });
+        session.history.push({ role: 'assistant', content: displayText });
+        // Mantém apenas as últimas 12 mensagens (6 turnos)
+        if (session.history.length > 12) {
+          session.history = session.history.slice(-12);
+        }
+
+        // Retorna a resposta CRUA (com marcadores) para o webhook processar
+        return reply;
       } catch (err) {
         console.error(`[${provider.name}]`, err.message);
         lastError = err;
 
         if (err.message.includes('RATE_LIMIT') && attempt === 0) {
-          // Espera 2s e tenta novamente
           await new Promise((r) => setTimeout(r, 2000));
         }
       }
@@ -158,4 +183,4 @@ async function processWithLLM(userMessage, session) {
   return '❌ Desculpe, não consegui processar sua mensagem agora. Tente novamente em alguns instantes.';
 }
 
-module.exports = { processWithLLM, getSession };
+module.exports = { processWithLLM, getSession, cleanToolMarkers };

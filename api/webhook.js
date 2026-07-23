@@ -7,14 +7,13 @@
  */
 
 const { sendMessage, sendKeyboard } = require('./_lib/telegram');
-const { processWithLLM, getSession } = require('./_lib/llm');
+const { processWithLLM, getSession, cleanToolMarkers } = require('./_lib/llm');
 const { recomendarAtividades, missaoAleatoria } = require('./_lib/activities');
 
 /**
  * Extrai o texto e metadados da mensagem recebida do Telegram.
  */
 function extractMessage(body) {
-  // Mensagem normal
   if (body.message) {
     return {
       chatId: body.message.chat.id,
@@ -22,8 +21,6 @@ function extractMessage(body) {
       firstName: body.message.from?.first_name || '',
     };
   }
-
-  // Callback de botão inline
   if (body.callback_query) {
     return {
       chatId: body.callback_query.message.chat.id,
@@ -32,46 +29,36 @@ function extractMessage(body) {
       callbackQueryId: body.callback_query.id,
     };
   }
-
   return null;
 }
 
 /**
- * Verifica se a resposta da LLM contém um comando de ferramenta.
+ * Extrai comandos de ferramenta da resposta da IA.
  * Formato: [[COMANDO:parametros]]
  */
 function parseTools(reply) {
   const tools = [];
-
-  // [[RECOMENDAR:bairro:interesses]]
   const recMatch = reply.match(/\[\[RECOMENDAR:([^\]]+)\]\]/);
   if (recMatch) {
     const [bairro, interessesStr] = recMatch[1].split(':');
     tools.push({
       type: 'recomendar',
-      bairro: bairro.trim(),
+      bairro: (bairro || '').trim(),
       interesses: interessesStr ? interessesStr.split(',').map((s) => s.trim()) : [],
     });
   }
-
-  // [[MISSAO:usuario_id]]
   const misMatch = reply.match(/\[\[MISSAO:([^\]]+)\]\]/);
   if (misMatch) {
     tools.push({ type: 'missao', usuarioId: misMatch[1].trim() });
   }
-
-  // [[PONTOS:usuario_id]]
   const ptMatch = reply.match(/\[\[PONTOS:([^\]]+)\]\]/);
   if (ptMatch) {
     tools.push({ type: 'pontos', usuarioId: ptMatch[1].trim() });
   }
-
-  // [[CONFIRMAR:missao_id]]
   const confMatch = reply.match(/\[\[CONFIRMAR:([^\]]+)\]\]/);
   if (confMatch) {
     tools.push({ type: 'confirmar', missaoId: confMatch[1].trim() });
   }
-
   return tools;
 }
 
@@ -79,7 +66,6 @@ function parseTools(reply) {
  * Handler principal da Vercel.
  */
 module.exports = async (req, res) => {
-  // Apenas POST
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'ok' });
   }
@@ -97,6 +83,7 @@ module.exports = async (req, res) => {
     // ── Comandos especiais ──────────────────────────────────
     if (text === '/start') {
       session.user = null;
+      session.history = [];
       await sendMessage(
         chatId,
         `Olá! 🌻 Sou o **Amparo**, seu assistente de bem-estar digital.\n\n` +
@@ -109,15 +96,15 @@ module.exports = async (req, res) => {
     if (text === '/atividades') {
       const atvs = recomendarAtividades(session.user?.bairro, session.user?.interesses);
       if (atvs.length === 0) {
-        await sendMessage(chatId, `Ainda não tenho atividades cadastradas para sua região. 😕\nEm breve traremos novidades!`);
+        await sendMessage(chatId, 'Ainda não tenho atividades cadastradas para sua região. 😕\nEm breve traremos novidades!');
       } else {
-        let resp = `Aqui estão as atividades próximas de você:\n\n`;
+        let resp = 'Aqui estão as atividades próximas de você:\n\n';
         atvs.forEach((a, i) => {
           const data = new Date(a.data_hora);
           const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
           resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${data.getHours()}h\n\n`;
         });
-        resp += `_Qual delas te interessou? Posso ajudar com mais detalhes!_`;
+        resp += '_Qual delas te interessou? Posso ajudar com mais detalhes!_';
         await sendMessage(chatId, resp);
       }
       return res.status(200).json({ status: 'atividades' });
@@ -126,26 +113,39 @@ module.exports = async (req, res) => {
     if (text === '/missao') {
       const missao = missaoAleatoria();
       if (!missao) {
-        await sendMessage(chatId, `Ainda não tenho missões disponíveis. 😕`);
+        await sendMessage(chatId, 'Ainda não tenho missões disponíveis. 😕');
       } else {
-        const msg = `🌟 *Missão Social da Semana!* 🌟\n\n` +
+        await sendMessage(
+          chatId,
+          `🌟 *Missão Social da Semana!* 🌟\n\n` +
           `Que tal visitar: *${missao.nome}*\n📍 ${missao.endereco}\n📅 ${missao.data_hora}\n\n` +
-          `Quando for, me avise! Mande uma mensagem aqui confirmando. 🎉`;
-        await sendMessage(chatId, msg);
+          `Quando for, me avise! Mande uma mensagem aqui confirmando. 🎉`
+        );
       }
       return res.status(200).json({ status: 'missao' });
     }
 
     if (text === '/pontos') {
-      await sendMessage(chatId, `⭐ *Seus Pontos Amparo:* ${session.pontos} pts\n\nContinue participando das missões para acumular mais pontos! 🎉`);
+      await sendMessage(
+        chatId,
+        `⭐ *Seus Pontos Amparo:* ${session.pontos} pts\n\nContinue participando das missões para acumular mais pontos! 🎉`
+      );
       return res.status(200).json({ status: 'pontos' });
     }
 
     // ── Processamento com IA ────────────────────────────────
-    const reply = await processWithLLM(text, session);
+    const rawReply = await processWithLLM(text, session);
 
-    // Verifica se a resposta contém comandos de ferramentas
-    const tools = parseTools(reply);
+    // Se a IA retornou uma mensagem de erro, não tenta parsear ferramentas
+    if (rawReply.startsWith('❌')) {
+      await sendMessage(chatId, rawReply);
+      return res.status(200).json({ status: 'error', error: rawReply });
+    }
+
+    // Extrai comandos de ferramenta da resposta CRUA
+    const tools = parseTools(rawReply);
+
+    // Executa as ferramentas (cada uma envia sua própria mensagem)
     for (const tool of tools) {
       if (tool.type === 'recomendar') {
         const atvs = recomendarAtividades(tool.bairro, tool.interesses);
@@ -154,6 +154,11 @@ module.exports = async (req, res) => {
           await sendMessage(
             chatId,
             `Encontrei esta atividade para você:\n\n*${a.nome}*\n📍 ${a.endereco}\n📅 ${a.data_hora}\n\n_Que tal dar uma passada lá?_ 😊`
+          );
+        } else {
+          await sendMessage(
+            chatId,
+            'Não encontrei atividades para essa região no momento. 😕'
           );
         }
       } else if (tool.type === 'missao') {
@@ -168,13 +173,17 @@ module.exports = async (req, res) => {
         await sendMessage(chatId, `⭐ *Pontos Amparo:* ${session.pontos} pts`);
       } else if (tool.type === 'confirmar') {
         session.pontos += 50;
-        await sendMessage(chatId, `🎉 *Parabéns!* Missão concluída! Você ganhou **50 Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`);
+        await sendMessage(
+          chatId,
+          `🎉 *Parabéns!* Missão concluída! Você ganhou **50 Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
+        );
       }
     }
 
-    // Envia a resposta limpa da IA
-    if (reply) {
-      await sendMessage(chatId, reply);
+    // Limpa os marcadores e envia o texto para o usuário
+    const cleanText = cleanToolMarkers(rawReply);
+    if (cleanText) {
+      await sendMessage(chatId, cleanText);
     }
 
     return res.status(200).json({ status: 'processed' });
