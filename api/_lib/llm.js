@@ -60,6 +60,7 @@ function cleanToolMarkers(text) {
     .replace(/\[\[MISSAO:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[PONTOS:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[CONFIRMAR:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[BUSCAR:[^\]]+\]\]\s*/g, '')
     .trim();
 }
 
@@ -74,7 +75,7 @@ async function callProvider(provider, messages) {
       { role: 'system', content: PROMPT },
       ...messages,
     ],
-    max_tokens: 512,
+    max_tokens: 1024,
     temperature: 0.7,
   };
 

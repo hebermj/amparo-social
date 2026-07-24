@@ -1,18 +1,21 @@
 /**
  * ── Webhook do Telegram (Vercel Serverless) ────────────────────
- * Recebe as mensagens do Telegram e processa com a IA.
+ * Recebe mensagens do Telegram, processa com IA e executa ferramentas.
  *
- * Endpoint: POST /api/webhook
- * Configuração: curl -X POST "https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://{URL}/api/webhook"
+ * Fluxo de busca web:
+ *   1. LLM retorna "[[BUSCAR:termo]] texto..."
+ *   2. Sistema executa search.js com o termo
+ *   3. Se achou resultados → nova chamada LLM para formatar
+ *   4. Se não achou → usa o texto original (limpo dos marcadores)
  */
 
-const { sendMessage, sendKeyboard } = require('./_lib/telegram');
+const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, getSession, cleanToolMarkers } = require('./_lib/llm');
 const { recomendarAtividades, missaoAleatoria } = require('./_lib/activities');
+const { buscarAtividades } = require('./_lib/search');
 
-/**
- * Extrai o texto e metadados da mensagem recebida do Telegram.
- */
+// ── Utilitários ────────────────────────────────────────────────
+
 function extractMessage(body) {
   if (body.message) {
     return {
@@ -26,45 +29,134 @@ function extractMessage(body) {
       chatId: body.callback_query.message.chat.id,
       text: body.callback_query.data,
       firstName: body.callback_query.from?.first_name || '',
-      callbackQueryId: body.callback_query.id,
     };
   }
   return null;
 }
 
 /**
- * Extrai comandos de ferramenta da resposta da IA.
- * Formato: [[COMANDO:parametros]]
+ * Extrai comandos de ferramenta da resposta crua da IA.
+ * Cada marcador [[COMANDO:param]] vira um tool objeto.
  */
 function parseTools(reply) {
   const tools = [];
-  const recMatch = reply.match(/\[\[RECOMENDAR:([^\]]+)\]\]/);
-  if (recMatch) {
-    const [bairro, interessesStr] = recMatch[1].split(':');
+
+  // [[RECOMENDAR:bairro:interesse1,interesse2]]
+  const rec = reply.match(/\[\[RECOMENDAR:([^\]]+)\]\]/);
+  if (rec) {
+    const [bairro, interessesStr] = rec[1].split(':');
     tools.push({
       type: 'recomendar',
       bairro: (bairro || '').trim(),
       interesses: interessesStr ? interessesStr.split(',').map((s) => s.trim()) : [],
     });
   }
-  const misMatch = reply.match(/\[\[MISSAO:([^\]]+)\]\]/);
-  if (misMatch) {
-    tools.push({ type: 'missao', usuarioId: misMatch[1].trim() });
+
+  // [[MISSAO:usuario_id]]
+  if (reply.match(/\[\[MISSAO:[^\]]+\]\]/)) {
+    tools.push({ type: 'missao' });
   }
-  const ptMatch = reply.match(/\[\[PONTOS:([^\]]+)\]\]/);
-  if (ptMatch) {
-    tools.push({ type: 'pontos', usuarioId: ptMatch[1].trim() });
+
+  // [[PONTOS:usuario_id]]
+  if (reply.match(/\[\[PONTOS:[^\]]+\]\]/)) {
+    tools.push({ type: 'pontos' });
   }
-  const confMatch = reply.match(/\[\[CONFIRMAR:([^\]]+)\]\]/);
-  if (confMatch) {
-    tools.push({ type: 'confirmar', missaoId: confMatch[1].trim() });
+
+  // [[CONFIRMAR:missao_id]]
+  if (reply.match(/\[\[CONFIRMAR:[^\]]+\]\]/)) {
+    tools.push({ type: 'confirmar' });
   }
+
+  // [[BUSCAR:termo de busca]]
+  const bus = reply.match(/\[\[BUSCAR:([^\]]+)\]\]/);
+  if (bus) {
+    tools.push({
+      type: 'buscar',
+      termo: bus[1].trim(),
+    });
+  }
+
   return tools;
 }
 
+// ── Ferramentas ────────────────────────────────────────────────
+
+async function executarRecomendar(chatId, bairro, interesses) {
+  const atvs = recomendarAtividades(bairro, interesses);
+  if (atvs.length === 0) {
+    await sendMessage(chatId, 'Não encontrei atividades cadastradas para essa região no momento. 😕');
+    return;
+  }
+  let resp = 'Aqui estão as atividades que encontrei:\n\n';
+  atvs.forEach((a, i) => {
+    const data = new Date(a.data_hora);
+    const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
+    resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${data.getHours()}h\n\n`;
+  });
+  resp += '_Qual te interessou? Me fala!_ 😊';
+  await sendMessage(chatId, resp);
+}
+
+async function executarMissao(chatId) {
+  const missao = missaoAleatoria();
+  if (!missao) {
+    await sendMessage(chatId, 'Ainda não tenho missões disponíveis. 😕');
+    return;
+  }
+  await sendMessage(
+    chatId,
+    `🌟 *Missão Social da Semana!* 🌟\n\n` +
+    `Que tal visitar: *${missao.nome}*\n📍 ${missao.endereco}\n📅 ${missao.data_hora}\n\n` +
+    `Quando for, me avise! 🎉`
+  );
+}
+
 /**
- * Handler principal da Vercel.
+ * Executa a busca web e retorna o texto adaptado para o usuário.
+ * Se achou resultados: chama LLM novamente para formatar.
+ * Se não achou: retorna null.
  */
+async function executarBusca(chatId, termo, session) {
+  await sendMessage(chatId, 'Vou pesquisar! 🔍 Só um instante...');
+
+  const resultados = await buscarAtividades([termo]);
+
+  if (resultados.length === 0) {
+    return null;
+  }
+
+  // Prepara resumo dos resultados para a LLM
+  const listaResultados = resultados
+    .slice(0, 5)
+    .map((r, i) => `${i + 1}. ${r.nome} — ${r.descricao.substring(0, 150)}`)
+    .join('\n');
+
+  // Segunda chamada LLM: formata os resultados de forma amigável
+  const promptFormatador = `Você é o Amparo, assistente de bem-estar para idosos.
+Sua função é transformar resultados de busca em uma mensagem acolhedora e simples.
+
+Resultados da busca por "${termo}":
+${listaResultados}
+
+Regras:
+- Máximo 2 parágrafos
+- Linguagem simples, frases curtas
+- NÃO use links ou URLs
+- Inclua nome da atividade e endereço/bairro quando possível
+- Termine com uma pergunta ou incentivo
+- Tom caloroso e respeitoso`;
+
+  const replyFormatado = await processWithLLM(
+    `[SISTEMA] Formate estes resultados de busca para o idoso:\n${listaResultados}`,
+    // Usa uma sessão descartável para não poluir o histórico do usuário
+    { history: [] }
+  );
+
+  return replyFormatado;
+}
+
+// ── Handler Principal ──────────────────────────────────────────
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'ok' });
@@ -80,55 +172,31 @@ module.exports = async (req, res) => {
     const text = msg.text.trim();
     const session = getSession(chatId);
 
-    // ── Comandos especiais ──────────────────────────────────
+    // ── Comandos especiais (não passam pela LLM) ────────────
     if (text === '/start') {
       session.user = null;
       session.history = [];
       await sendMessage(
         chatId,
-        `Olá! 🌻 Sou o **Amparo**, seu assistente de bem-estar digital.\n\n` +
-        `Vou ajudar você a encontrar atividades sociais, culturais e de lazer perto da sua casa em **Santo André**.\n\n` +
-        `Para começar, qual é o seu nome?`
+        'Olá! 🌻 Sou o **Amparo**, seu assistente de bem-estar digital.\n\n' +
+        'Vou ajudar você a encontrar atividades sociais, culturais e de lazer perto da sua casa em **Santo André**.\n\n' +
+        'Para começar, qual é o seu nome?'
       );
       return res.status(200).json({ status: 'start' });
     }
 
     if (text === '/atividades') {
-      const atvs = recomendarAtividades(session.user?.bairro, session.user?.interesses);
-      if (atvs.length === 0) {
-        await sendMessage(chatId, 'Ainda não tenho atividades cadastradas para sua região. 😕\nEm breve traremos novidades!');
-      } else {
-        let resp = 'Aqui estão as atividades próximas de você:\n\n';
-        atvs.forEach((a, i) => {
-          const data = new Date(a.data_hora);
-          const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
-          resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${data.getHours()}h\n\n`;
-        });
-        resp += '_Qual delas te interessou? Posso ajudar com mais detalhes!_';
-        await sendMessage(chatId, resp);
-      }
-      return res.status(200).json({ status: 'atividades' });
+      return await executarRecomendar(chatId, session.user?.bairro, session.user?.interesses);
     }
 
     if (text === '/missao') {
-      const missao = missaoAleatoria();
-      if (!missao) {
-        await sendMessage(chatId, 'Ainda não tenho missões disponíveis. 😕');
-      } else {
-        await sendMessage(
-          chatId,
-          `🌟 *Missão Social da Semana!* 🌟\n\n` +
-          `Que tal visitar: *${missao.nome}*\n📍 ${missao.endereco}\n📅 ${missao.data_hora}\n\n` +
-          `Quando for, me avise! Mande uma mensagem aqui confirmando. 🎉`
-        );
-      }
-      return res.status(200).json({ status: 'missao' });
+      return await executarMissao(chatId);
     }
 
     if (text === '/pontos') {
       await sendMessage(
         chatId,
-        `⭐ *Seus Pontos Amparo:* ${session.pontos} pts\n\nContinue participando das missões para acumular mais pontos! 🎉`
+        `⭐ *Seus Pontos Amparo:* ${session.pontos} pts\n\nContinue participando das missões! 🎉`
       );
       return res.status(200).json({ status: 'pontos' });
     }
@@ -136,54 +204,54 @@ module.exports = async (req, res) => {
     // ── Processamento com IA ────────────────────────────────
     const rawReply = await processWithLLM(text, session);
 
-    // Se a IA retornou uma mensagem de erro, não tenta parsear ferramentas
+    // Mensagem de erro direta
     if (rawReply.startsWith('❌')) {
       await sendMessage(chatId, rawReply);
       return res.status(200).json({ status: 'error', error: rawReply });
     }
 
-    // Extrai comandos de ferramenta da resposta CRUA
+    // Extrai e executa ferramentas da resposta crua
     const tools = parseTools(rawReply);
 
-    // Executa as ferramentas (cada uma envia sua própria mensagem)
+    let textoFinal = cleanToolMarkers(rawReply);
+
     for (const tool of tools) {
-      if (tool.type === 'recomendar') {
-        const atvs = recomendarAtividades(tool.bairro, tool.interesses);
-        if (atvs.length > 0) {
-          const a = atvs[0];
+      switch (tool.type) {
+        case 'recomendar':
+          await executarRecomendar(chatId, tool.bairro, tool.interesses);
+          break;
+
+        case 'missao':
+          await executarMissao(chatId);
+          break;
+
+        case 'pontos':
+          await sendMessage(chatId, `⭐ *Pontos Amparo:* ${session.pontos} pts`);
+          break;
+
+        case 'confirmar':
+          session.pontos += 50;
           await sendMessage(
             chatId,
-            `Encontrei esta atividade para você:\n\n*${a.nome}*\n📍 ${a.endereco}\n📅 ${a.data_hora}\n\n_Que tal dar uma passada lá?_ 😊`
+            `🎉 *Parabéns!* Missão concluída! Você ganhou **50 Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
           );
-        } else {
-          await sendMessage(
-            chatId,
-            'Não encontrei atividades para essa região no momento. 😕'
-          );
+          break;
+
+        case 'buscar': {
+          const resultadoBusca = await executarBusca(chatId, tool.termo, session);
+          if (resultadoBusca) {
+            textoFinal = resultadoBusca;
+          } else {
+            textoFinal = 'Não encontrei atividades específicas para isso agora. 😕 Mas se quiser, posso tentar outro tipo de busca!';
+          }
+          break;
         }
-      } else if (tool.type === 'missao') {
-        const missao = missaoAleatoria();
-        if (missao) {
-          await sendMessage(
-            chatId,
-            `🌟 Sua missão: *${missao.nome}*\n📍 ${missao.endereco}\n\nMe conte quando for!`
-          );
-        }
-      } else if (tool.type === 'pontos') {
-        await sendMessage(chatId, `⭐ *Pontos Amparo:* ${session.pontos} pts`);
-      } else if (tool.type === 'confirmar') {
-        session.pontos += 50;
-        await sendMessage(
-          chatId,
-          `🎉 *Parabéns!* Missão concluída! Você ganhou **50 Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
-        );
       }
     }
 
-    // Limpa os marcadores e envia o texto para o usuário
-    const cleanText = cleanToolMarkers(rawReply);
-    if (cleanText) {
-      await sendMessage(chatId, cleanText);
+    // Envia o texto final (limpo) para o usuário
+    if (textoFinal && textoFinal.trim()) {
+      await sendMessage(chatId, textoFinal);
     }
 
     return res.status(200).json({ status: 'processed' });
