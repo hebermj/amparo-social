@@ -113,34 +113,40 @@ async function executarMissao(chatId) {
 
 /**
  * Executa a busca web e retorna o texto adaptado para o usuário.
- * Formata os resultados diretamente (sem segunda chamada LLM).
+ * NUNCA lança exceção — sempre retorna texto ou null.
  */
 async function executarBusca(chatId, termo, session) {
-  await sendMessage(chatId, '🔍 Vou pesquisar, só um instante...');
+  try {
+    await sendMessage(chatId, '🔍 Vou pesquisar, só um instante...');
 
-  const resultados = await buscarAtividades([termo]);
+    const resultados = await buscarAtividades([termo]);
 
-  if (resultados.length === 0) {
+    if (resultados.length === 0) {
+      return null;
+    }
+
+    // Formata até 3 resultados de forma amigável para o idoso
+    const top3 = resultados.slice(0, 3);
+    let texto = 'Encontrei algumas atividades interessantes! 🌟\n\n';
+
+    top3.forEach((r, i) => {
+      const emojis = ['1️⃣', '2️⃣', '3️⃣'];
+      texto += `${emojis[i]} *${r.nome}*\n`;
+      if (r.descricao) {
+        const frase = r.descricao.split(/[.!?]/)[0].substring(0, 120);
+        texto += `   ${frase}.\n`;
+      }
+      texto += '\n';
+    });
+
+    texto += '_Qual te interessou? Me fala que eu ajudo com mais detalhes!_ 😊';
+    return texto;
+
+  } catch (err) {
+    console.error('[BUSCA ERROR]', err.message);
+    // Se a busca falhar, usa o texto original da LLM (fallback)
     return null;
   }
-
-  // Formata até 3 resultados de forma amigável para o idoso
-  const top3 = resultados.slice(0, 3);
-  let texto = 'Encontrei algumas atividades interessantes! 🌟\n\n';
-
-  top3.forEach((r, i) => {
-    const emojis = ['1️⃣', '2️⃣', '3️⃣'];
-    texto += `${emojis[i]} *${r.nome}*\n`;
-    if (r.descricao) {
-      // Pega apenas a primeira frase da descrição
-      const frase = r.descricao.split(/[.!?]/)[0].substring(0, 120);
-      texto += `   ${frase}.\n`;
-    }
-    texto += '\n';
-  });
-
-  texto += '_Qual te interessou? Me fala que eu ajudo com mais detalhes!_ 😊';
-  return texto;
 }
 
 // ── Handler Principal ──────────────────────────────────────────

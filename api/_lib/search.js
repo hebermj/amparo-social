@@ -46,7 +46,6 @@ async function buscarSearXNG(termo) {
     q: termo,
     format: 'json',
     language: 'pt-BR',
-    categories: 'general,news',
     safesearch: '1',
   });
 
@@ -136,14 +135,24 @@ async function buscarAtividades(interesses, cidade = 'Santo André') {
   console.log(`[SEARCH] Buscando: "${termo}"`);
 
   // 1º: SearXNG
-  const resultsSearXNG = await buscarSearXNG(termo);
+  let resultsSearXNG = null;
+  try {
+    resultsSearXNG = await buscarSearXNG(termo);
+  } catch (e) {
+    console.warn(`[SEARCH] SearXNG error: ${e.message}`);
+  }
   if (resultsSearXNG) {
     console.log(`[SEARCH] SearXNG: ${resultsSearXNG.length} resultados`);
     return resultsSearXNG;
   }
 
   // 2º: Bing
-  const resultsBing = await buscarBing(termo);
+  let resultsBing = null;
+  try {
+    resultsBing = await buscarBing(termo);
+  } catch (e) {
+    console.warn(`[SEARCH] Bing error: ${e.message}`);
+  }
   if (resultsBing) {
     console.log(`[SEARCH] Bing: ${resultsBing.length} resultados`);
     return resultsBing;
