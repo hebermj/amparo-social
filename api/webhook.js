@@ -113,11 +113,10 @@ async function executarMissao(chatId) {
 
 /**
  * Executa a busca web e retorna o texto adaptado para o usuário.
- * Se achou resultados: chama LLM novamente para formatar.
- * Se não achou: retorna null.
+ * Formata os resultados diretamente (sem segunda chamada LLM).
  */
 async function executarBusca(chatId, termo, session) {
-  await sendMessage(chatId, 'Vou pesquisar! 🔍 Só um instante...');
+  await sendMessage(chatId, '🔍 Vou pesquisar, só um instante...');
 
   const resultados = await buscarAtividades([termo]);
 
@@ -125,34 +124,23 @@ async function executarBusca(chatId, termo, session) {
     return null;
   }
 
-  // Prepara resumo dos resultados para a LLM
-  const listaResultados = resultados
-    .slice(0, 5)
-    .map((r, i) => `${i + 1}. ${r.nome} — ${r.descricao.substring(0, 150)}`)
-    .join('\n');
+  // Formata até 3 resultados de forma amigável para o idoso
+  const top3 = resultados.slice(0, 3);
+  let texto = 'Encontrei algumas atividades interessantes! 🌟\n\n';
 
-  // Segunda chamada LLM: formata os resultados de forma amigável
-  const promptFormatador = `Você é o Amparo, assistente de bem-estar para idosos.
-Sua função é transformar resultados de busca em uma mensagem acolhedora e simples.
+  top3.forEach((r, i) => {
+    const emojis = ['1️⃣', '2️⃣', '3️⃣'];
+    texto += `${emojis[i]} *${r.nome}*\n`;
+    if (r.descricao) {
+      // Pega apenas a primeira frase da descrição
+      const frase = r.descricao.split(/[.!?]/)[0].substring(0, 120);
+      texto += `   ${frase}.\n`;
+    }
+    texto += '\n';
+  });
 
-Resultados da busca por "${termo}":
-${listaResultados}
-
-Regras:
-- Máximo 2 parágrafos
-- Linguagem simples, frases curtas
-- NÃO use links ou URLs
-- Inclua nome da atividade e endereço/bairro quando possível
-- Termine com uma pergunta ou incentivo
-- Tom caloroso e respeitoso`;
-
-  const replyFormatado = await processWithLLM(
-    `[SISTEMA] Formate estes resultados de busca para o idoso:\n${listaResultados}`,
-    // Usa uma sessão descartável para não poluir o histórico do usuário
-    { history: [] }
-  );
-
-  return replyFormatado;
+  texto += '_Qual te interessou? Me fala que eu ajudo com mais detalhes!_ 😊';
+  return texto;
 }
 
 // ── Handler Principal ──────────────────────────────────────────
