@@ -107,13 +107,22 @@ async function buscarBing(termo) {
 }
 
 /**
- * Constrói termos de busca contextualizados para atividades para idosos.
- * Ex: "oficina pintura Santo André idosos grátis 2025"
+ * Monta o termo de busca adicionando contexto de cidade e público,
+ * sem duplicar palavras que já estão no termo original.
  */
-function montarTermoBusca(interesses, cidade = 'Santo André') {
-  const base = interesses.join(' ');
-  return `${base} ${cidade} idosos atividade gratuita`.trim();
-}
+ function montarTermoBusca(interesses, cidade = 'Santo André') {
+   let base = interesses.join(' ').trim();
+   if (!base.toLowerCase().includes(cidade.toLowerCase())) {
+     base += ` ${cidade}`;
+   }
+   if (!base.toLowerCase().includes('idoso') && !base.toLowerCase().includes('terceira idade')) {
+     base += ' idosos';
+   }
+   if (!base.toLowerCase().includes('atividad')) {
+     base += ' atividades';
+   }
+   return base.trim();
+ }
 
 /**
  * Interface principal: busca atividades na web.
