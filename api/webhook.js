@@ -12,7 +12,7 @@
 const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
 const { getSession, saveSession } = require('./_lib/db');
-const { recomendarAtividades } = require('./_lib/activities');
+const { recomendarComFallback } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
 
 // ── Utilitários ────────────────────────────────────────────────
@@ -75,23 +75,39 @@ function parseTools(reply) {
     });
   }
 
+  // [[HORARIO:hh:mm]]
+  const horario = reply.match(/\[\[HORARIO:([0-9]{1,2}:[0-9]{2})\]\]/);
+  if (horario) {
+    const [hh, mm] = horario[1].split(':').map(Number);
+    if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
+      tools.push({ type: 'horario', horario: horario[1].trim() });
+    }
+  }
+
   return tools;
 }
 
 // ── Ferramentas ────────────────────────────────────────────────
 
 async function executarRecomendar(chatId, cidade, bairro, interesses) {
-  const atvs = recomendarAtividades(cidade, bairro, interesses);
-  if (atvs.length === 0) {
-    await sendMessage(chatId, 'Não encontrei atividades cadastradas para essa região no momento. 😕');
+  const { origem, atividades } = await recomendarComFallback(cidade, bairro, interesses);
+  if (atividades.length === 0) {
+    await sendMessage(chatId, 'Não encontrei atividades para essa região agora. 😕 Tente me pedir outro tipo de atividade!');
     return;
   }
-  let resp = 'Aqui estão as atividades que encontrei:\n\n';
-  atvs.forEach((a, i) => {
-    const data = new Date(a.data_hora);
-    const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
-    const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n\n`;
+  let resp = origem === 'web'
+    ? 'Encontrei atividades na internet para você! 🌟\n\n'
+    : 'Aqui estão as atividades que encontrei:\n\n';
+  atividades.slice(0, 5).forEach((a, i) => {
+    resp += `${i + 1}. *${a.nome}*\n`;
+    if (a.endereco) resp += `   📍 ${a.endereco}\n`;
+    if (a.data_hora) {
+      const data = new Date(a.data_hora);
+      const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
+      const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      resp += `   📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n`;
+    }
+    resp += '\n';
   });
   resp += '_Qual te interessou? Me fala!_ 😊';
   await sendMessage(chatId, resp);
@@ -203,6 +219,12 @@ module.exports = async (req, res) => {
           await executarRecomendar(chatId, session.user?.cidade, tool.bairro, tool.interesses);
           break;
 
+        case 'horario':
+          session.user = session.user || {};
+          session.user.pref_horario = tool.horario;
+          // A confirmação (ecoando o horário) vem do texto limpo da LLM
+          break;
+
         case 'buscar': {
           const resultadoBusca = await executarBusca(chatId, tool.termo, session);
           if (resultadoBusca) {
@@ -229,3 +251,5 @@ module.exports = async (req, res) => {
     return res.status(200).json({ status: 'error', error: err.message });
   }
 };
+
+module.exports.parseTools = parseTools;

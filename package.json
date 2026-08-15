@@ -5,7 +5,8 @@
   "main": "api/webhook.js",
   "scripts": {
     "dev": "node api/webhook.js",
-    "start": "node api/webhook.js"
+    "start": "node api/webhook.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20.0.0"

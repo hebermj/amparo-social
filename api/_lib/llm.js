@@ -41,6 +41,7 @@ function cleanToolMarkers(text) {
     .replace(/\[\[RECOMENDAR:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[BUSCAR:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[PERFIL:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[HORARIO:[^\]]+\]\]\s*/g, '')
     .trim();
 }
 

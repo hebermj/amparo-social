@@ -8,8 +8,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { buscarAtividades } = require('./search');
 
 const dataDir = path.join(__dirname, '..', '..', 'data');
+
+const LIMIAR_FALLBACK = 3;
 
 /**
  * Converte "santo-andre" → "Santo André".
@@ -96,4 +99,43 @@ function atividadesHoje(cidade) {
   );
 }
 
-module.exports = { recomendarAtividades, atividadesHoje };
+/**
+ * Recomenda atividades da base local; se a base não atende (< LIMIAR_FALLBACK),
+ * aciona a Busca Web automaticamente (fallback). Nunca lança exceção.
+ *
+ * @param {string} [cidade]
+ * @param {string} [bairro]
+ * @param {string[]} [interesses]
+ * @param {object} [deps] — dependências injetáveis para teste
+ * @param {Function} [deps.base] — recomenda da base local (default: recomendarAtividades)
+ * @param {Function} [deps.buscar] — busca na web (default: buscarAtividades)
+ * @returns {Promise<{origem: 'base'|'web', atividades: object[]}>}
+ */
+async function recomendarComFallback(cidade, bairro, interesses = [], deps = {}) {
+  const recomendarBase = deps.base || recomendarAtividades;
+  const buscar = deps.buscar || buscarAtividades;
+
+  const daBase = recomendarBase(cidade, bairro, interesses);
+
+  if (daBase.length >= LIMIAR_FALLBACK) {
+    return { origem: 'base', atividades: daBase };
+  }
+
+  try {
+    const daWeb = await buscar(interesses, cidade);
+    if (daWeb.length > 0) {
+      return { origem: 'web', atividades: daWeb };
+    }
+  } catch (err) {
+    console.error('[RECOMENDAR] Busca web falhou:', err.message);
+  }
+
+  return { origem: 'base', atividades: daBase };
+}
+
+module.exports = {
+  recomendarAtividades,
+  atividadesHoje,
+  recomendarComFallback,
+  LIMIAR_FALLBACK,
+};
