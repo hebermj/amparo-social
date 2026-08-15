@@ -96,22 +96,4 @@ function atividadesHoje(cidade) {
   );
 }
 
-/**
- * Retorna uma atividade aleatória para servir como missão social,
- * preferencialmente da cidade do usuário.
- */
-function missaoAleatoria(cidade) {
-  let opcoes = atividades;
-  if (cidade) {
-    const cidadeLower = cidade.toLowerCase();
-    opcoes = atividades.filter((a) =>
-      a.cidade.toLowerCase().includes(cidadeLower)
-    );
-  }
-  if (opcoes.length === 0) opcoes = atividades;
-  if (opcoes.length === 0) return null;
-  const idx = Math.floor(Math.random() * opcoes.length);
-  return opcoes[idx];
-}
-
-module.exports = { recomendarAtividades, atividadesHoje, missaoAleatoria };
+module.exports = { recomendarAtividades, atividadesHoje };

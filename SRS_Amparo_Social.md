@@ -2,9 +2,9 @@
 
 ## Amparo — Plataforma de Envelhecimento Ativo e Inclusão Social
 
-**Versão:** 1.0  
-**Data:** Julho de 2026  
-**Autor:** Heber  
+**Versão:** 2.0  
+**Data:** Agosto de 2026  
+**Autor:** Heber
 
 ---
 
@@ -12,48 +12,56 @@
 
 ### 1.1 Finalidade
 
-Este documento tem por finalidade especificar os requisitos de software do **Amparo**, uma plataforma conversacional via Telegram que utiliza inteligência artificial para combater o isolamento social da população idosa, promovendo envelhecimento ativo, autonomia e inclusão social. O documento destina-se à equipe de desenvolvimento, stakeholders e avaliadores acadêmicos.
+Este documento especifica os requisitos de software do **Amparo**, uma plataforma conversacional via Telegram que utiliza inteligência artificial para combater o isolamento social da população idosa, promovendo envelhecimento ativo, autonomia e inclusão social. O documento é a **base de referência para o desenvolvimento**: descreve o que está implementado, o que está em construção e o que é futuro, para que cada requisito seja rastreável ao código e vice-versa.
 
 ### 1.2 Escopo
 
-O Amparo é um assistente conversacional acessado via Telegram — ferramenta que já faz parte da rotina da maioria dos idosos brasileiros — que atua como facilitador da autonomia, recomendando atividades comunitárias, incentivando hábitos saudáveis, lembrando compromissos e aproximando o usuário da rede de apoio local. O sistema contempla:
+O Amparo é um assistente conversacional acessado via Telegram que recomenda atividades comunitárias locais, incentiva hábitos saudáveis e aproxima o usuário da rede de apoio. O sistema contempla:
 
-- Cadastro e perfil do usuário (interesses, região, preferências)
+- Cadastro e perfil do usuário (nome, cidade, bairro, interesses)
 - Recomendação personalizada de atividades sociais e comunitárias
-- Sistema de lembretes proativos via Telegram
-- Missões Sociais com acompanhamento de participação
-- Conversação por texto e áudio
-- IA Proativa que identifica padrões de comportamento e incentiva participação social
-- Integração com bases de dados de atividades locais (Sesc, prefeituras, centros comunitários)
+- Busca Web como camada de resiliência da base local
+- Lembretes proativos via Telegram (V1.1)
+- IA Proativa que identifica inatividade e incentiva participação social (V1.1)
+- Conversação por texto (áudio previsto para V2)
 
-Este documento cobre o desenvolvimento do **MVP (Minimum Viable Product)** e as versões futuras do roadmap.
+Decisões de escopo relevantes: o módulo de **Missões Sociais foi eliminado por completo** (ver ADR-0001) e a exclusão de dados LGPD é prevista para V2.
 
-### 1.3 Definições, Acrônimos e Abreviações
+### 1.3 Convenção de Status
+
+Cada requisito funcional carrega um sufixo no código que indica seu estado de implementação:
+
+| Sufixo | Significado |
+|--------|-------------|
+| (sem sufixo) | **Implementado** — existe no código e funciona |
+| `-EC` | **Em construção** — previsto para o marco V1.1 |
+| `-F` | **Futuro** — previsto para V2 ou além |
+
+### 1.4 Definições, Acrônimos e Abreviações
 
 | Termo | Definição |
 |-------|-----------|
 | Amparo | Nome do assistente conversacional |
 | Telegram | Plataforma de mensagens utilizada como canal principal |
 | IA | Inteligência Artificial |
-| MVP | Minimum Viable Product (Produto Mínimo Viável) |
+| V1.1 | Marco atual de desenvolvimento (até fim de agosto/2026) |
 | SRS | Software Requirements Specification (Especificação de Requisitos de Software) |
-| Missão Social | Desafio semanal que estimula interação social |
 | LGPD | Lei Geral de Proteção de Dados (Lei nº 13.709/2018) |
 | RF | Requisito Funcional |
 | RNF | Requisito Não Funcional |
-| UC | Caso de Uso (Use Case) |
 | CA | Critério de Aceitação |
 
-### 1.4 Referências
+### 1.5 Referências
 
 - Documento de Visão: "Amparo – Plataforma de Envelhecimento Ativo e Inclusão Social.pdf" (2026)
 - Telegram Bot API Documentation
 - Lei Geral de Proteção de Dados — Lei nº 13.709/2018
 - NBR ISO/IEC 9126 — Qualidade de Produto de Software
+- `CONTEXT.md` (glossário do domínio) e `docs/adr/` (decisões de arquitetura)
 
-### 1.5 Visão Geral do Documento
+### 1.6 Visão Geral do Documento
 
-A Seção 2 apresenta a descrição geral do sistema. A Seção 3 detalha os requisitos funcionais. A Seção 4 descreve os requisitos não funcionais. A Seção 5 apresenta a modelagem e diagramas. A Seção 6 especifica os requisitos de dados. A Seção 7 detalha as interfaces externas. A Seção 8 define o escopo do MVP. A Seção 9 apresenta o roadmap de evolução. A Seção 10 contém os apêndices.
+A Seção 2 apresenta a descrição geral do sistema. A Seção 3 detalha os requisitos funcionais com status. A Seção 4 descreve os requisitos não funcionais. A Seção 5 apresenta a modelagem. A Seção 6 especifica os requisitos de dados. A Seção 7 detalha as interfaces externas. A Seção 8 define o escopo do MVP. A Seção 9 apresenta o roadmap. A Seção 10 contém os apêndices.
 
 ---
 
@@ -61,34 +69,30 @@ A Seção 2 apresenta a descrição geral do sistema. A Seção 3 detalha os req
 
 ### 2.1 Perspectiva do Produto
 
-O Amparo é um sistema conversacional **standalone** utilizando o Telegram como canal primário de interação. O sistema opera em modelo **cliente-servidor** com backend em nuvem (Vercel), utilizando APIs externas para:
+O Amparo é um sistema conversacional **standalone** utilizando o Telegram como canal primário de interação. Opera em modelo **cliente-servidor** com backend em nuvem (Vercel), utilizando APIs externas para:
 
 - **Telegram Bot API** — envio e recebimento de mensagens
 - **LLM (Large Language Model)** — processamento de linguagem natural e geração de respostas
-- **Base de dados externa** — consulta a calendários culturais e atividades comunitárias
+- **Busca Web** — consulta em tempo real (SearXNG → Bing) quando a base local não atende
 
 O sistema não substitui relações humanas, mas atua como um **facilitador** que conecta o idoso à sua comunidade.
 
 ### 2.2 Funções do Produto
 
-As principais funções do sistema são:
-
-1. **Cadastro e Perfil** — registrar interesses, região, dados de saúde e preferências do usuário
+1. **Cadastro e Perfil** — registrar nome, cidade, bairro e interesses do usuário
 2. **Recomendação Personalizada** — sugerir atividades sociais, culturais e físicas com base no perfil
-3. **Lembretes Proativos** — enviar notificações sobre eventos, medicamentos, consultas e compromissos
-4. **Missões Sociais** — propor desafios semanais de participação comunitária
-5. **Missões Sociais** — propor desafios semanais de participação comunitária
-6. **Conversação Natural** — interação por texto e áudio em linguagem simples
-7. **IA Proativa** — monitoramento de engajamento com incentivos personalizados
-8. **Compras Assistidas** (versões futuras) — auxílio na compra de itens essenciais
+3. **Busca Web** — pesquisar atividades reais quando a base local não atende
+4. **Lembretes Proativos** — enviar notificações sobre eventos e compromissos no horário configurado
+5. **IA Proativa** — detectar inatividade e enviar incentivos personalizados
+6. **Conversação Natural** — interação por texto em linguagem simples (áudio em V2)
 
 ### 2.3 Características dos Usuários
 
 | Tipo de Usuário | Descrição | Nível de Experiência |
 |----------------|-----------|---------------------|
 | **Idoso (primário)** | Pessoa com 60+ anos, baixa familiaridade com tecnologia, usa Telegram no dia a dia | Básico (sabe enviar mensagens de texto e áudio) |
-| **Cuidador/Familiar (secundário)** | Parente ou cuidador que auxilia o idoso, pode receber notificações de apoio | Intermediário |
-| **Administrador do sistema** | Mantenedor técnico da plataforma, gerencia parcerias e base de atividades | Avançado |
+| **Cuidador/Familiar (secundário)** | Parente ou cuidador que auxilia o idoso, pode receber notificações de apoio (previsto para V4) | Intermediário |
+| **Administrador do sistema** | Mantenedor técnico da plataforma, gerencia a base de atividades | Avançado |
 
 ### 2.4 Restrições
 
@@ -96,7 +100,7 @@ As principais funções do sistema são:
 - O sistema deve processar mensagens em até 10 segundos para manter a fluidez da conversa
 - Deve haver conformidade com a **LGPD** para tratamento de dados pessoais de idosos
 - O MVP será implantado em ambiente **Vercel (serverless)** com escalabilidade horizontal
-- A base de dados de atividades locais deve ser **curada manualmente** no MVP (sem raspagem automática)
+- A base de dados de atividades locais deve ser **curada manualmente** (sem raspagem automática até V3)
 
 ### 2.5 Suposições e Dependências
 
@@ -108,68 +112,61 @@ As principais funções do sistema são:
 
 ## 3. Requisitos Funcionais
 
+> **Legenda de status:** sem sufixo = implementado · `-EC` = em construção (V1.1) · `-F` = futuro.
+
 ### 3.1 Módulo: Cadastro e Perfil do Usuário
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
-| RF-001 | O sistema deve permitir que o usuário se cadastre informando nome, bairro/região e data de nascimento | 🔴 Alta |
+| RF-001 | O sistema deve permitir que o usuário se cadastre informando nome, cidade e bairro | 🔴 Alta |
 | RF-002 | O sistema deve permitir que o usuário selecione seus interesses (cultura, esporte, leitura, música, artesanato, voluntariado, etc.) | 🔴 Alta |
-| RF-003 | O sistema deve permitir que o usuário informe restrições de mobilidade ou saúde | 🟡 Média |
-| RF-004 | O sistema deve armazenar as preferências de horário para envio de notificações | 🟡 Média |
-| RF-005 | O sistema deve permitir que o usuário atualize seu perfil a qualquer momento | 🔵 Baixa |
-| RF-006 | O sistema deve solicitar consentimento explícito do usuário para armazenar dados pessoais (LGPD) | 🔴 Alta |
+| RF-003-F | O sistema deve permitir que o usuário informe restrições de mobilidade ou saúde | 🟡 Média |
+| RF-004-EC | O sistema deve armazenar as preferências de horário para envio de notificações | 🟡 Média |
+| RF-005-F | O sistema deve permitir que o usuário atualize seu perfil a qualquer momento | 🔵 Baixa |
+| RF-006-F | O sistema deve solicitar consentimento explícito do usuário para armazenar dados pessoais (LGPD) | 🔴 Alta |
 
 ### 3.2 Módulo: Recomendação de Atividades
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
-| RF-007 | O sistema deve recomendar atividades comunitárias com base na região e interesses do usuário | 🔴 Alta |
+| RF-007 | O sistema deve recomendar atividades comunitárias com base na cidade, bairro e interesses do usuário | 🔴 Alta |
 | RF-008 | O sistema deve manter uma base de dados de atividades locais (Sesc, prefeituras, centros comunitários, bibliotecas, UBS) | 🔴 Alta |
 | RF-009 | O sistema deve exibir para cada atividade: nome, data/horário, endereço, descrição e tipo | 🔴 Alta |
-| RF-010 | O sistema deve permitir que o usuário confirme interesse em uma atividade | 🟡 Média |
-| RF-011 | O sistema deve agrupar recomendações por categoria (cultura, saúde, lazer, educação, voluntariado) | 🟡 Média |
-| RF-012 | O sistema deve oferecer ajuda com inscrição na atividade quando solicitado | 🟡 Média |
+| RF-010-EC | Quando a base local não atender o pedido, o sistema deve buscar atividades na web automaticamente (fallback) | 🔴 Alta |
+| RF-011-F | O sistema deve permitir que o usuário confirme interesse em uma atividade | 🟡 Média |
+| RF-012-F | O sistema deve agrupar recomendações por categoria (cultura, saúde, lazer, educação, voluntariado) | 🟡 Média |
+| RF-013-F | O sistema deve oferecer ajuda com inscrição na atividade quando solicitado | 🟡 Média |
 
 ### 3.3 Módulo: Lembretes Proativos
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
-| RF-013 | O sistema deve enviar lembretes periódicos sobre atividades comunitárias relevantes | 🔴 Alta |
-| RF-014 | O sistema deve enviar lembretes de medicamentos, consultas e compromissos quando configurado | 🟡 Média |
-| RF-015 | O sistema deve enviar mensagens de incentivo matinais ou semanais personalizadas | 🔵 Baixa |
-| RF-016 | O usuário deve poder configurar horários para receber notificações | 🟡 Média |
-| RF-017 | O sistema deve reduzir a frequência de lembretes se o usuário ignorá-los repetidamente | 🔵 Baixa |
+| RF-014-EC | O sistema deve enviar lembretes periódicos sobre atividades comunitárias relevantes | 🔴 Alta |
+| RF-015-EC | O usuário deve poder configurar horários para receber notificações | 🟡 Média |
+| RF-016-F | O sistema deve enviar lembretes de medicamentos, consultas e compromissos quando configurado | 🟡 Média |
+| RF-017-F | O sistema deve reduzir a frequência de lembretes se o usuário ignorá-los repetidamente | 🔵 Baixa |
 
-### 3.4 Módulo: Missões Sociais
-
-| Código | Descrição | Prioridade |
-|--------|-----------|------------|
-| RF-018 | O sistema deve propor uma Missão Social semanal personalizada ao usuário | 🟡 Média |
-| RF-019 | O sistema deve permitir que o usuário confirme a realização de uma missão (via texto, áudio ou foto) | 🟡 Média |
-| RF-021 | O sistema deve registrar as missões realizadas pelo usuário | 🔵 Baixa |
-| RF-023 | O sistema deve enviar mensagem de reconhecimento e incentivo ao completar uma missão | 🟡 Média |
-| RF-024 | O sistema deve notificar o usuário sobre novas missões disponíveis | 🟡 Média |
-
-### 3.5 Módulo: IA Proativa
+### 3.4 Módulo: IA Proativa
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
-| RF-025 | A IA deve identificar padrões de redução de participação social do usuário | 🟡 Média |
-| RF-026 | A IA deve iniciar conversas proativas quando detectar redução de engajamento | 🟡 Média |
-| RF-027 | A IA deve adaptar o tom e a abordagem com base no histórico de interações | 🔴 Alta |
-| RF-028 | A IA deve responder perguntas sobre saúde, bem-estar e serviços públicos com informações gerais | 🟡 Média |
-| RF-029 | A IA deve registrar o histórico de conversas para personalização (com consentimento) | 🔴 Alta |
+| RF-018-EC | O sistema deve enviar mensagem de incentivo quando detectar inatividade do usuário (3+ dias sem interação) | 🟡 Média |
+| RF-019-F | A IA deve identificar padrões de redução de participação social do usuário | 🟡 Média |
+| RF-020-F | A IA deve iniciar conversas proativas quando detectar redução de engajamento | 🟡 Média |
+| RF-021 | A IA deve adaptar o tom e a abordagem com base no histórico de interações | 🔴 Alta |
+| RF-022 | A IA deve responder perguntas sobre saúde, bem-estar e serviços públicos com informações gerais | 🟡 Média |
+| RF-023 | O sistema deve registrar o histórico de conversas para personalização | 🔴 Alta |
 
-### 3.6 Módulo: Conversação
+### 3.5 Módulo: Conversação
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
-| RF-030 | O sistema deve aceitar mensagens de **texto** como entrada principal | 🔴 Alta |
-| RF-031 | O sistema deve aceitar mensagens de **áudio** e transcrevê-las para processamento | 🟡 Média |
-| RF-032 | O sistema deve responder em linguagem simples, acolhedora e em português brasileiro | 🔴 Alta |
-| RF-033 | O sistema deve manter o contexto da conversa por sessão | 🔴 Alta |
-| RF-034 | O sistema deve oferecer botões rápidos para ações comuns (Ver missão, Atividades hoje) | 🟡 Média |
-| RF-035 | O sistema deve permitir que o usuário solicite ajuda a qualquer momento com o comando `/ajuda` | 🔵 Baixa |
+| RF-024 | O sistema deve aceitar mensagens de **texto** como entrada principal | 🔴 Alta |
+| RF-025-F | O sistema deve aceitar mensagens de **áudio** e transcrevê-las para processamento | 🟡 Média |
+| RF-026 | O sistema deve responder em linguagem simples, acolhedora e em português brasileiro | 🔴 Alta |
+| RF-027 | O sistema deve manter o contexto da conversa por sessão | 🔴 Alta |
+| RF-028-F | O sistema deve oferecer botões rápidos para ações comuns (ex.: Atividades hoje) | 🟡 Média |
+| RF-029-F | O sistema deve permitir que o usuário solicite ajuda a qualquer momento com o comando `/ajuda` | 🔵 Baixa |
 
 ---
 
@@ -182,7 +179,7 @@ As principais funções do sistema são:
 | RNF-001 | A interface deve usar linguagem simples, frases curtas e tom acolhedor | Nenhuma mensagem deve conter jargões técnicos; todas as respostas devem usar tratamento respeitoso (sr./sra.) | 🔴 Alta |
 | RNF-002 | Mensagens de áudio devem ser suportadas como alternativa ao texto | O sistema deve transcrever áudios de até 2 minutos com precisão mínima de 80% | 🟡 Média |
 | RNF-003 | O fluxo de cadastro deve ser concluído em no máximo 5 interações | Usuário completa cadastro respondendo a no máximo 5 perguntas | 🔴 Alta |
-| RNF-004 | O sistema deve fornecer feedback visual/ textual imediato para cada ação do usuário | Toda ação do usuário deve receber uma resposta em até 3 segundos | 🔴 Alta |
+| RNF-004 | O sistema deve fornecer feedback imediato para cada ação do usuário | Toda ação do usuário deve receber uma resposta em até 3 segundos | 🔴 Alta |
 
 ### 4.2 Desempenho
 
@@ -197,15 +194,15 @@ As principais funções do sistema são:
 | Código | Descrição | Critério de Aceitação | Prioridade |
 |--------|-----------|----------------------|------------|
 | RNF-008 | Dados pessoais do usuário devem ser armazenados com criptografia em repouso | AES-256 para dados sensíveis em banco de dados | 🔴 Alta |
-| RNF-009 | O sistema deve estar em conformidade com a LGPD (Lei nº 13.709/2018) | Implementar: consentimento explícito, direito de exclusão, política de privacidade acessível | 🔴 Alta |
+| RNF-009 | O sistema deve estar em conformidade com a LGPD | Implementar: consentimento explícito, direito de exclusão, política de privacidade acessível | 🔴 Alta |
 | RNF-010 | Chaves de API e credenciais não devem ser expostas no código-fonte | Uso exclusivo de variáveis de ambiente | 🔴 Alta |
-| RNF-011 | O usuário deve poder solicitar a exclusão de todos os seus dados | Implementar comando ou fluxo de exclusão de conta | 🟡 Média |
+| RNF-011-F | O usuário deve poder solicitar a exclusão de todos os seus dados (V2) | Implementar comando ou fluxo de exclusão de conta | 🟡 Média |
 
 ### 4.4 Confiabilidade
 
 | Código | Descrição | Critério de Aceitação | Prioridade |
 |--------|-----------|----------------------|------------|
-| RNF-012 | Em caso de falha do provedor LLM principal, o sistema deve tentar fallback automaticamente | Até 3 tentativas com provedores diferentes antes de retornar erro | 🔴 Alta |
+| RNF-012 | Em caso de falha do provedor LLM principal, o sistema deve tentar fallback automaticamente | Até 2 tentativas com provedores diferentes antes de retornar erro | 🔴 Alta |
 | RNF-013 | O sistema não deve perder mensagens do usuário em caso de falha temporária | Mensagens não processadas devem ser retidas na fila por até 24h | 🟡 Média |
 | RNF-014 | O sistema deve registrar logs para diagnóstico de erros | Logs com timestamp, componente, severidade e mensagem de erro | 🟡 Média |
 
@@ -214,7 +211,8 @@ As principais funções do sistema são:
 | Código | Descrição | Critério de Aceitação | Prioridade |
 |--------|-----------|----------------------|------------|
 | RNF-015 | O código-fonte deve ser versionado com Git e GitHub | Commits semânticos, branch main protegida | 🔵 Baixa |
-| RNF-016 | A base de atividades deve ser atualizável sem deploy do sistema principal | Arquivo JSON ou planilha externa como fonte de dados | 🟡 Média |
+| RNF-016 | A base de atividades deve ser atualizável sem deploy do sistema principal | Arquivo JSON como fonte de dados, um por cidade | 🟡 Média |
+| RNF-017-EC | A base de atividades deve ser mantida com dados atuais | Atividades com `data_hora` no passado devem ser removidas ou atualizadas na revisão da base | 🟡 Média |
 
 ---
 
@@ -255,8 +253,8 @@ As principais funções do sistema são:
 │           │                                                  │
 │  ┌────────┴─────────────────────────────────────────────┐    │
 │  │         Activity Engine / Recommender                │    │
-│  │  Consulta base → filtra por região/interesses →       │    │
-│  │  gera recomendação personalizada                      │    │
+│  │  Consulta base → filtra por cidade/bairro/interesses │    │
+│  │  → fallback para Busca Web quando necessário         │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -264,10 +262,10 @@ As principais funções do sistema são:
               ┌────────────┴────────────┐
               │                         │
      ┌────────┴────────┐     ┌──────────┴──────────┐
-     │   PostgreSQL    │     │  Base de Atividades  │
-     │  (usuários,     │     │  (JSON / Planilha)   │
-     │   (usuários,     │     │  Sesc, Prefeitura,   │
-     │                 │     │  Centros, Parceiros  │
+     │   PostgreSQL    │     │     Busca Web        │
+     │  (sessions:     │     │  SearXNG → Bing      │
+     │   perfil +      │     │  (fallback da base   │
+     │   histórico)    │     │   local)             │
      └─────────────────┘     └─────────────────────┘
 ```
 
@@ -307,32 +305,28 @@ IDOSO                        AMPARO (IA)
   │ ◄────────────────────────── │
 ```
 
-### 5.3 Fluxo de Missão Social
+### 5.3 Fluxo de IA Proativa
 
 ```
-  IA PROATIVA                   IDOSO
+  AMPARO (IA)                   IDOSO
        │                            │
-       │  1. "Maria, sua missão     │
-       │     desta semana:          │
-       │     Visitar a Biblioteca   │
-       │     Municipal - Rua X, 123 │
+       │  1. [3+ dias sem           │
+       │     interação]             │
+       │     "Saudades, sra. Maria! │
+       │     🌻 Como estão as       │
+       │     coisas? Quer ver as    │
+       │     atividades da semana?" │
+       │ ────────────────────────►  │
+       │                            │
+       │  2. "Que bom ouvir você!   │
+       │     Tem oficina de pintura │
+       │     amanhã às 14h no Sesc. │
        │     Que acha?"             │
-       │ ────────────────────────►  │
-       │                            │
-       │  2. "Que legal! Vou sim!"  │
        │ ◄──────────────────────── │
        │                            │
-       │  3. "Maravilha! 🌟 Mande   │
-       │     uma foto ou áudio      │
-       │     quando chegar lá."     │
-       │ ────────────────────────►  │
-       │                            │
-       │  4. [Envia foto]           │
-       │ ◄──────────────────────── │
-       │                            │
-       │  5. "Parabéns, Maria! 🎉   │
-       │     Que bom que você foi!  │
-       │     Continue assim!"       │
+       │  3. "Maravilha, sra.       │
+       │     Maria! 🎉 Anotei sua   │
+       │     preferência."          │
        │ ────────────────────────►  │
 ```
 
@@ -340,92 +334,44 @@ IDOSO                        AMPARO (IA)
 
 ## 6. Requisitos de Dados
 
-### 6.1 Entidades do Banco de Dados
+### 6.1 Persistência
+
+O MVP persiste uma **sessão por usuário** em PostgreSQL (tabela `sessions` com JSONB), contendo perfil e histórico de conversa. Sem `DATABASE_URL`, o sistema opera com memória volátil (apenas desenvolvimento).
 
 ```sql
--- ── Usuários ──────────────────────────────────────────────
-CREATE TABLE usuarios (
-    id              SERIAL PRIMARY KEY,
-    telefone        VARCHAR(20) UNIQUE NOT NULL,
-    nome            VARCHAR(100) NOT NULL,
-    bairro          VARCHAR(100) NOT NULL,
-    cidade          VARCHAR(100) NOT NULL DEFAULT 'Santo André',
-    data_nascimento DATE,
-    interesses      TEXT[],       -- Array de interesses ['cultura','esporte','leitura']
-    restricoes      TEXT,         -- Restrições de mobilidade/saúde
-    pref_horario    TIME,         -- Horário preferido para notificações
-    lgpd_consentido BOOLEAN DEFAULT FALSE,
-    ativo           BOOLEAN DEFAULT TRUE,
-    criado_em       TIMESTAMP DEFAULT NOW(),
-    atualizado_em   TIMESTAMP DEFAULT NOW()
+CREATE TABLE sessions (
+    chat_id     TEXT PRIMARY KEY,
+    data        JSONB NOT NULL,   -- { user: {nome, cidade, bairro, interesses}, history: [...] }
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
-
-CREATE INDEX idx_usuarios_telefone ON usuarios(telefone);
-CREATE INDEX idx_usuarios_bairro ON usuarios(bairro);
-
--- ── Atividades ────────────────────────────────────────────
-CREATE TABLE atividades (
-    id              SERIAL PRIMARY KEY,
-    nome            VARCHAR(200) NOT NULL,
-    descricao       TEXT,
-    categoria       VARCHAR(50) NOT NULL,  -- 'cultura','esporte','saude','educacao','lazer','voluntariado'
-    tipo            VARCHAR(50),            -- 'oficina','evento','curso','grupo','servico'
-    data_hora       TIMESTAMP,
-    endereco        VARCHAR(300),
-    bairro          VARCHAR(100),
-    cidade          VARCHAR(100) DEFAULT 'Santo André',
-    parceiro        VARCHAR(100),           -- 'Sesc','Prefeitura','Biblioteca','UBS',etc
-    contato         VARCHAR(100),
-    link_inscricao  VARCHAR(300),
-    ativo           BOOLEAN DEFAULT TRUE,
-    criado_em       TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_atividades_bairro ON atividades(bairro);
-CREATE INDEX idx_atividades_categoria ON atividades(categoria);
-CREATE INDEX idx_atividades_data ON atividades(data_hora);
-
--- ── Missões Sociais ───────────────────────────────────────
-CREATE TABLE missoes (
-    id              SERIAL PRIMARY KEY,
-    usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-    atividade_id    INTEGER REFERENCES atividades(id),
-    titulo          VARCHAR(200) NOT NULL,
-    descricao       TEXT,
-    data_inicio     DATE DEFAULT CURRENT_DATE,
-    data_fim        DATE,
-    status          VARCHAR(20) DEFAULT 'pendente',  -- 'pendente','concluida','expirada'
-    confirmacao     TEXT,         -- URL da foto ou transcrição do áudio
-    concluida_em    TIMESTAMP,
-    criado_em       TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_missoes_usuario ON missoes(usuario_id);
-CREATE INDEX idx_missoes_status ON missoes(status);
-
--- ── Histórico de Conversas ────────────────────────────────
-CREATE TABLE conversas (
-    id              SERIAL PRIMARY KEY,
-    usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-    mensagem        TEXT NOT NULL,
-    resposta        TEXT NOT NULL,
-    provedor        VARCHAR(50),     -- 'opencode-zen','openrouter'
-    duracao_ms      INTEGER,
-    criado_em       TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_conversas_usuario ON conversas(usuario_id);
-CREATE INDEX idx_conversas_data ON conversas(criado_em);
 ```
 
-### 6.2 Dicionário de Dados
+### 6.2 Base de Atividades
+
+Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), carregados sem deploy.
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `id` | number | Identificador |
+| `nome` | string | Nome da atividade |
+| `descricao` | string | Descrição |
+| `categoria` | string | cultura, esporte, educacao, saude, lazer, voluntariado |
+| `tipo` | string | oficina, evento, curso, grupo, servico |
+| `data_hora` | ISO datetime | Data e horário |
+| `endereco` | string | Endereço |
+| `bairro` | string | Bairro |
+| `cidade` | string | Cidade |
+| `parceiro` | string | Sesc, Prefeitura, Biblioteca, UBS, etc. |
+| `contato` | string | Telefone/contato |
+| `link_inscricao` | string | URL de inscrição |
+
+### 6.3 Dicionário de Dados
 
 | Entidade | Descrição | Volume Estimado (MVP) |
 |----------|-----------|----------------------|
-| `usuarios` | Dados cadastrais dos idosos | Até 100 usuários |
-| `atividades` | Catálogo de eventos/atividades comunitárias | Até 200 registros (curados manualmente) |
-| `missoes` | Missões sociais atribuídas semanalmente | Até 50/semana |
-| `conversas` | Histórico de interações com a IA | Até 5.000/mês |
+| `sessions` | Perfil + histórico por usuário (PostgreSQL ou memória) | Até 100 usuários |
+| `atividades-*.json` | Catálogo de atividades comunitárias curado por cidade | Até 200 registros |
+| `conversas` | Histórico de interações com a IA (planejado para personalização avançada em V2) | Até 5.000/mês |
 
 ---
 
@@ -436,9 +382,8 @@ CREATE INDEX idx_conversas_data ON conversas(criado_em);
 | Aspecto | Especificação |
 |---------|---------------|
 | Canal primário | Telegram via Telegram Bot API |
-| Formato de entrada | Texto (obrigatório), Áudio (opcional), Imagem (opcional para confirmação de missão) |
-| Formato de saída | Texto com formatação simples, botões de resposta inline keyboards |
-| Áudio | Transcrição via API de reconhecimento de fala |
+| Formato de entrada | Texto (obrigatório); Áudio e botões (V2) |
+| Formato de saída | Texto com formatação simples; botões de resposta (V2) |
 | Tratamento | Linguagem simples, frases curtas, tom acolhedor, tratamento "sr./sra." |
 
 ### 7.2 Interface com Provedores de IA
@@ -448,31 +393,14 @@ CREATE INDEX idx_conversas_data ON conversas(criado_em);
 | OpenCode Zen | `POST https://opencode.ai/zen/v1/chat/completions` | Bearer Token | `deepseek-v4-flash-free` |
 | OpenRouter (fallback) | `POST https://openrouter.ai/api/v1/chat/completions` | Bearer Token | `meta-llama/llama-3.3-70b-instruct:free` |
 
-**Exemplo de requisição (OpenAI-compatible):**
+### 7.3 Interface com Busca Web
 
-```json
-POST https://opencode.ai/zen/v1/chat/completions
-Authorization: Bearer sk-...
-Content-Type: application/json
+| Provedor | Endpoint | Autenticação | Uso |
+|----------|----------|-------------|-----|
+| SearXNG (primário) | `GET {SEARXNG_URL}/search?q=...&format=json` | Bearer (se configurado) | Busca em tempo real |
+| Bing (fallback) | `GET https://api.bing.microsoft.com/v7.0/search` | `Ocp-Apim-Subscription-Key` | Fallback quando SearXNG falha |
 
-{
-  "model": "deepseek-v4-flash-free",
-  "messages": [
-    {
-      "role": "system",
-      "content": "Você é o Amparo, um assistente amigável..."
-    },
-    {
-      "role": "user",
-      "content": "Quais atividades têm hoje perto de casa?"
-    }
-  ],
-  "max_tokens": 1024,
-  "temperature": 0.7
-}
-```
-
-### 7.3 Interface com Telegram Bot API
+### 7.4 Interface com Telegram Bot API
 
 | Operação | Endpoint | Descrição |
 |----------|----------|-----------|
@@ -485,16 +413,14 @@ Content-Type: application/json
 
 ### 8.1 Escopo do MVP
 
-O MVP contempla as funcionalidades essenciais para validar a proposta de valor com usuários reais:
-
-| Módulo | Funcionalidades incluídas | Prioridade |
-|--------|--------------------------|------------|
-| **Cadastro** | Nome, bairro/região, interesses, consentimento LGPD | 🔴 Essencial |
-| **Conversação** | Texto, histórico de sessão, resposta em linguagem simples | 🔴 Essencial |
-| **Recomendação** | Base curada de atividades, filtro por região e interesse | 🔴 Essencial |
-| **Lembretes** | Notificações semanais de atividades | 🟡 Importante |
-| **Missões Sociais** | Missão semanal, confirmação por texto | 🟡 Importante |
-| **IA Proativa** | Mensagens de incentivo, detecção básica de engajamento | 🔵 Desejável |
+| Módulo | Funcionalidades incluídas | Status |
+|--------|--------------------------|--------|
+| **Cadastro** | Nome, cidade, bairro, interesses | 🔴 Implementado |
+| **Conversação** | Texto, histórico de sessão, resposta em linguagem simples | 🔴 Implementado |
+| **Recomendação** | Base curada, filtro por cidade/bairro/interesses | 🔴 Implementado |
+| **Busca Web** | Fallback automático quando a base local não atende | 🟡 V1.1 (em construção) |
+| **Lembretes** | Notificações de atividades no horário configurado | 🟡 V1.1 (em construção) |
+| **IA Proativa** | Incentivo após 3+ dias de inatividade | 🟡 V1.1 (em construção) |
 
 ### 8.2 O que NÃO está no MVP
 
@@ -502,11 +428,11 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 |---------------|--------|-----------------|
 | Transcrição de áudio | Complexidade adicional de integração com STT | V2 |
 | Botões interativos do Telegram | Requer implementação de inline keyboards | V2 |
-| Compras assistidas | Não é mais o foco principal do produto | V3 |
+| Exclusão de dados (LGPD) | Fluxo de exclusão de conta | V2 |
+| **Missões Sociais** | **Módulo eliminado do produto (ADR-0001)** | — |
 | Integração automática com calendários públicos | Depende de API de prefeituras e parceiros | V3 |
 | Painel administrativo | Não necessário para validação com usuários | V4 |
 | Expansão para múltiplas cidades | MVP focado em uma cidade-piloto (Santo André) | V4 |
-| Compra de benefícios com parceiros | Depende de cadastro de parceiros | V4 |
 
 ### 8.3 Critérios de Aceitação do MVP
 
@@ -514,9 +440,9 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 |--------|----------|------|
 | C-01 | Usuário completa cadastro em até 5 interações pelo Telegram | Funcional |
 | C-02 | Sistema recomenda ao menos 3 atividades relevantes para o perfil do usuário | Funcional |
-| C-03 | Lembretes são enviados no horário configurado pelo usuário | Funcional |
-| C-04 | Usuário recebe uma Missão Social por semana | Funcional |
-| C-05 | Usuário recebe reconhecimento ao completar uma missão | Funcional |
+| C-03 | Quando a base local não atende, o sistema busca atividades na web e apresenta resultados | Funcional |
+| C-04 | Lembretes são enviados no horário configurado pelo usuário | Funcional |
+| C-05 | Sistema envia mensagem de incentivo após 3+ dias de inatividade | Funcional |
 | C-06 | Sistema responde 95% das mensagens em até 10 segundos | Desempenho |
 | C-07 | Fallback para OpenRouter quando OpenCode Zen falha | Confiabilidade |
 | C-08 | Dados do usuário são armazenados somente após consentimento explícito | Segurança |
@@ -528,29 +454,32 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 ## 9. Roadmap
 
 ```
-V1 ─ MVP (Julho 2026)
-  ├── Cadastro + Perfil
+V1 ─ MVP (entregue — Julho 2026)
+  ├── Cadastro + Perfil (nome, cidade, bairro, interesses)
   ├── Recomendação de atividades (base curada)
-  ├── Lembretes semanais
-  ├── Missões Sociais
-  ├── Conversação texto (LLM)
+  ├── Busca Web manual (marcador [[BUSCAR:]])
+  ├── Conversação texto (LLM com fallback)
   └── Telegram como canal único
 
-V2 ─ IA Personalizada (Agosto 2026)
+V1.1 ─ Fechar gaps (até fim de Agosto 2026)
+  ├── Lembretes proativos (Vercel Cron)
+  ├── IA Proativa (incentivo por inatividade)
+  ├── Fallback automático recomendação → Busca Web
+  └── Preferência de horário de notificações
+
+V2 ─ IA Personalizada (Setembro 2026)
   ├── Transcrição de áudio (STT)
   ├── Botões interativos Telegram
-  ├── IA Proativa (detecção de baixo engajamento)
+  ├── Exclusão de dados e consentimento LGPD
   ├── Perfil mais completo (restrições, preferências)
-  ├── Histórico e personalização avançada
-  └── Ampliação de parceiros
+  └── Histórico e personalização avançada
 
-V3 ─ Integração com Calendários Públicos (Setembro 2026)
+V3 ─ Integração com Calendários Públicos (Outubro 2026+)
   ├── Raspagem automática de calendários culturais
-  ├── Compras assistidas (versão simples)
-  ├── Suporte a múltiplos canais (Telegram)
+  ├── Suporte a múltiplos canais
   └── Dashboard de atividades para administradores
 
-V4 ─ Escala (Outubro 2026+)
+V4 ─ Escala
   ├── Expansão para novas cidades
   ├── Painel institucional para parceiros
   ├── Envolvimento de familiares/cuidadores
@@ -565,10 +494,10 @@ V4 ─ Escala (Outubro 2026+)
 
 | Objetivo | RFs Relacionados |
 |----------|------------------|
-| Reduzir o isolamento social de pessoas idosas | RF-007, RF-013, RF-018, RF-025, RF-026 |
-| Reduzir carga cognitiva no uso de tecnologia | RF-030, RF-031, RF-032, RNF-001 |
-| Memorizar preferências do usuário | RF-001, RF-002, RF-005, RF-029 |
-| Promover autonomia digital e social | RF-007, RF-012, RF-018, RF-023 |
+| Reduzir o isolamento social de pessoas idosas | RF-007, RF-010, RF-014, RF-018 |
+| Reduzir carga cognitiva no uso de tecnologia | RF-024, RF-026, RNF-001 |
+| Memorizar preferências do usuário | RF-001, RF-002, RF-023 |
+| Promover autonomia digital e social | RF-007, RF-013, RF-022 |
 | Envolver familiares e cuidadores | (previsto para V4) |
 
 ### 10.2 Glossário
@@ -576,15 +505,20 @@ V4 ─ Escala (Outubro 2026+)
 | Termo | Definição |
 |-------|-----------|
 | Amparo | Assistente conversacional para idosos |
+| Atividade | Evento comunitário curado (oficina, curso, grupo, serviço) |
 | Bairro | Divisão geográfica usada para filtrar atividades locais |
+| Base de Atividades | Catálogo curado por cidade (`data/atividades-<cidade>.json`) |
+| Busca Web | Consulta em tempo real (SearXNG → Bing) usada quando a base local não atende |
 | Envelhecimento Ativo | Conceito da OMS: processo de otimizar oportunidades de saúde, participação e segurança |
-| Gamificação | Uso de elementos de jogos (missões) para engajar usuários |
+| IA Proativa | Comportamento do sistema de iniciar conversa quando detecta inatividade |
 | Isolamento Social | Ausência de contato ou interação com a comunidade |
+| Lembrete Proativo | Mensagem enviada pelo sistema em horário configurado |
 | LGPD | Lei Geral de Proteção de Dados Pessoais (Brasil) |
 | LLM | Large Language Model (Modelo de Linguagem de Grande Escala) |
-| Missão Social | Desafio semanal que estimula interação comunitária |
-| Missão Social | Desafio semanal que estimula interação comunitária |
+| Parceiro | Instituição que fornece atividades à Base (Sesc, prefeituras, etc.) |
 | Provedor LLM | Serviço de API que fornece acesso a modelos de IA |
+| Sessão | Estado persistido por usuário (perfil + histórico) |
+| Usuário | Pessoa idosa (60+) que interage com o Amparo |
 
 ### 10.3 Prompt do Sistema (LLM)
 
@@ -627,7 +561,7 @@ caloroso e respeitoso, como um neto ou neta que ajuda com carinho.
 9. **Sempre comece** cumprimentando ou retomando o contexto ("Entendi, sra. Maria!")
 10. **Máximo 2 parágrafos** por resposta. Se precisar de mais info, pergunte aos poucos
 11. **Quebre informações longas** em bullet points simples (•), máximo 4 por resposta
-12. **Ao recomendar atividade**, SEMpre inclua:
+12. **Ao recomendar atividade**, sempre inclua:
     - Nome da atividade
     - Endereço (ou ponto de referência conhecido)
     - Data e horário (em formato "terça-feira, 14h")
@@ -638,22 +572,21 @@ caloroso e respeitoso, como um neto ou neta que ajuda com carinho.
 14. Ao receber "Oi", "Olá", "Bom dia" ou "/start":
     - Seja breve. Apresente-se em 1 parágrafo
     - Faça UMA pergunta por vez (não sobrecarregue)
-    - Ordem das perguntas: ❶ Nome → ❷ Bairro → ❸ Interesses (lista de opções)
+    - Ordem das perguntas: ❶ Nome → ❷ Cidade → ❸ Bairro → ❹ Interesses (lista de opções)
 15. Após o cadastro, já sugira UMA atividade disponível na região
 
-## Engajamento e Missões
-16. Uma vez por semana, sugira uma **Missão Social** personalizada
-17. Missões devem ser específicas: "visitar a Biblioteca Municipal" em vez de "fazer algo cultural"
-18. Após confirmar missão, parabenize com entusiasmo genuíno 🎉
-19. Se o usuário sumir por 3+ dias sem interagir, envie uma mensagem curta e acolhedora:
+## Engajamento e IA Proativa
+16. Se o usuário sumir por 3+ dias sem interagir, envie uma mensagem curta e acolhedora:
     "Saudades, sra. Maria! 🌻 Como estão as coisas? Quer ver as atividades da semana?"
+17. Ao responder sobre atividades, prefira recomendar da base local; se o usuário 
+    pedir algo que a base não tem, use a ferramenta de busca.
 
 ## Tratamento de Erros
-20. Se não entender a mensagem, peça desculpas e peça para repetir de forma mais simples
-21. Se o usuário estiver irritado ou frustrado, acolha e ofereça ajuda prática
-22. Se perguntar algo fora do escopo (política, religião, saúde grave), diga que não sabe 
+18. Se não entender a mensagem, peça desculpas e peça para repetir de forma mais simples
+19. Se o usuário estiver irritado ou frustrado, acolha e ofereça ajuda prática
+20. Se perguntar algo fora do escopo (política, religião, saúde grave), diga que não sabe 
     e sugira procurar um profissional ou serviço especializado
-23. Se perguntar sobre preços ou compras: "No momento estou focado em atividades sociais. 
+21. Se perguntar sobre preços ou compras: "No momento estou focado em atividades sociais. 
     Quer que eu busque uma oficina ou evento perto de você?"
 
 ---
@@ -675,10 +608,10 @@ AMPARO: Hoje tem oficina de pintura no Sesc Santo André,
 às 14h — Rua Tamarutaca, 302. Fica perto do Parque Celso 
 Daniel. A sra. gosta de pintura? 🎨
 
-## Missão Social
-AMPARO: Sra. Maria, sua missão desta semana: visitar a 
-Biblioteca Municipal de Santo André (Rua Xavier de Toledo, 
-269). Tem sessão de leitura toda quarta às 10h. Que acha? 📚
+## IA Proativa
+AMPARO: Sra. Maria, faz um tempinho que não conversamos! 
+Amanhã tem sessão de leitura na Biblioteca Municipal às 10h. 
+A sra. quer ir? 📚
 
 ---
 
@@ -689,10 +622,9 @@ detectar a intenção correta:
 
 | Intenção | Ferramenta | Descrição |
 |----------|-----------|-----------|
-| Usuário quer ver atividades | `recomendar_atividades(bairro, interesses)` | Retorna lista de atividades filtradas por bairro e interesses |
-| Usuário completou 1 semana | `criar_missao_social(usuario_id)` | Gera missão semanal personalizada |
-| Hora de lembrar | `lembrete_atividades(usuario_id)` | Envia lembretes programados das atividades |
-| Usuário confirma presença | `confirmar_presenca(missao_id, tipo_confirmacao)` | Registra conclusão de missão (texto, áudio ou foto) |
+| Usuário quer ver atividades | `recomendar_atividades(cidade, bairro, interesses)` | Retorna lista de atividades filtradas; se a base local não atender, faz busca na web |
+| Usuário informa dados pessoais | `salvar_perfil(nome, cidade, bairro, interesses)` | Salva o cadastro do usuário |
+| Usuário pede algo que a base não tem | `buscar_online(termo)` | Pesquisa atividades na web (SearXNG → Bing) |
 ```
 
 ---

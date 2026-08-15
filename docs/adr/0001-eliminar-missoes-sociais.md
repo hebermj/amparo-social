@@ -1,0 +1,3 @@
+# Eliminar Missões Sociais
+
+O produto original incluía um módulo de "Missões Sociais" (desafios semanais com confirmação por texto/áudio/foto). Durante o grill de escopo (ago/2026) decidimos eliminar o módulo por completo — do SRS, do código (`/missao`, `missaoAleatoria`, marcadores `[[MISSAO:]]`/`[[CONFIRMAR:]]`), do banco (tabela `missoes`) e da documentação. O valor de engajamento é coberto pela IA Proativa (incentivo por inatividade), sem o custo de um segundo mecanismo de gamificação.

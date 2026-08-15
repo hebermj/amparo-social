@@ -5,7 +5,7 @@ pessoas idosas, conectando-as a atividades comunitárias, culturais e sociais
 perto de casa.
 
 O Amparo conversa em linguagem simples e acolhedora, recomenda atividades
-baseadas no perfil de cada usuário e propõe **Missões Sociais** semanais.
+baseadas no perfil de cada usuário e incentiva a participação social.
 
 ---
 
@@ -16,7 +16,6 @@ baseadas no perfil de cada usuário e propõe **Missões Sociais** semanais.
 | **Cadastro e perfil** | Nome → Cidade → Bairro → Interesses, salvos por usuário |
 | **Recomendação de atividades** | Filtra a base local por cidade, bairro e interesses |
 | **Busca na web** | Pesquisa atividades reais (SearXNG → Bing) quando a base local não atende |
-| **Missões Sociais** | Desafio semanal personalizado |
 | **Memória persistente** | Perfil e histórico de cada usuário salvos no banco |
 
 ---
@@ -29,7 +28,7 @@ Usuário (Telegram)
    ▼
 Webhook (Vercel Serverless — api/webhook.js)
    │
-   ├── Comandos diretos: /start, /atividades, /missao
+   ├── Comandos diretos: /start, /atividades
    │
    └── IA (api/_lib/llm.js)
          OpenCode Zen → OpenRouter (fallback)
@@ -37,7 +36,6 @@ Webhook (Vercel Serverless — api/webhook.js)
          ▼
       Resposta crua com marcadores de ferramenta
       [[PERFIL:...]] [[RECOMENDAR:...]] [[BUSCAR:...]]
-      [[MISSAO:...]] [[CONFIRMAR:...]]
          │
          ▼
       Webhook executa a ferramenta e envia o texto limpo
@@ -54,8 +52,6 @@ texto amigável para o idoso.
 | `[[PERFIL:nome:cidade:bairro:interesses]]` | Salva o cadastro do usuário |
 | `[[RECOMENDAR:bairro:interesse1,interesse2]]` | Recomenda da base local |
 | `[[BUSCAR:termo]]` | Pesquisa atividades na web |
-| `[[MISSAO:usuario_id]]` | Propõe uma Missão Social |
-| `[[CONFIRMAR:missao_id]]` | Confirma a realização de uma missão |
 
 ---
 

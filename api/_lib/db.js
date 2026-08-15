@@ -1,7 +1,7 @@
 /**
  * ── Persistência de Sessões ────────────────────────────────────
- * Guarda a memória de cada usuário (perfil, histórico e
- * missões) em PostgreSQL. Se DATABASE_URL não estiver configurada,
+ * Guarda a memória de cada usuário (perfil e histórico)
+ * em PostgreSQL. Se DATABASE_URL não estiver configurada,
  * usa um Map em memória (modo de desenvolvimento / fallback).
  */
 
@@ -30,7 +30,6 @@ function novoSession() {
   return {
     history: [],
     user: null, // { nome, cidade, bairro, interesses }
-    missoes: [], // { id, descricao, status }
   };
 }
 

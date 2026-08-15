@@ -12,7 +12,7 @@
 const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
 const { getSession, saveSession } = require('./_lib/db');
-const { recomendarAtividades, missaoAleatoria } = require('./_lib/activities');
+const { recomendarAtividades } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
 
 // ── Utilitários ────────────────────────────────────────────────
@@ -51,16 +51,6 @@ function parseTools(reply) {
       bairro: (bairro || '').trim(),
       interesses: interessesStr ? interessesStr.split(',').map((s) => s.trim()) : [],
     });
-  }
-
-  // [[MISSAO:usuario_id]]
-  if (reply.match(/\[\[MISSAO:[^\]]+\]\]/)) {
-    tools.push({ type: 'missao' });
-  }
-
-  // [[CONFIRMAR:missao_id]]
-  if (reply.match(/\[\[CONFIRMAR:[^\]]+\]\]/)) {
-    tools.push({ type: 'confirmar' });
   }
 
   // [[BUSCAR:termo de busca]]
@@ -105,28 +95,6 @@ async function executarRecomendar(chatId, cidade, bairro, interesses) {
   });
   resp += '_Qual te interessou? Me fala!_ 😊';
   await sendMessage(chatId, resp);
-}
-
-async function executarMissao(chatId, session) {
-  const missao = missaoAleatoria(session.user?.cidade);
-  if (!missao) {
-    await sendMessage(chatId, 'Ainda não tenho missões disponíveis. 😕');
-    return;
-  }
-
-  // Registra a missão proposta para validar a confirmação depois
-  session.missoes.push({
-    id: missao.id || Date.now(),
-    descricao: missao.nome,
-    status: 'pendente',
-  });
-
-  await sendMessage(
-    chatId,
-    `🌟 *Missão Social da Semana!* 🌟\n\n` +
-    `Que tal visitar: *${missao.nome}*\n📍 ${missao.endereco}\n📅 ${missao.data_hora}\n\n` +
-    `Quando for, me avise! 🎉`
-  );
 }
 
 /**
@@ -203,10 +171,6 @@ module.exports = async (req, res) => {
       return await executarRecomendar(chatId, session.user?.cidade, session.user?.bairro, session.user?.interesses);
     }
 
-    if (text === '/missao') {
-      return await executarMissao(chatId, session);
-    }
-
     // ── Processamento com IA ────────────────────────────────
     const rawReply = await processWithLLM(text, session);
 
@@ -238,28 +202,6 @@ module.exports = async (req, res) => {
         case 'recomendar':
           await executarRecomendar(chatId, session.user?.cidade, tool.bairro, tool.interesses);
           break;
-
-        case 'missao':
-          await executarMissao(chatId, session);
-          break;
-
-        case 'confirmar': {
-          // Valida que existe uma missão pendente antes de confirmar
-          const pendente = session.missoes.find((m) => m.status === 'pendente');
-          if (pendente) {
-            pendente.status = 'concluida';
-            await sendMessage(
-              chatId,
-              `🎉 *Parabéns!* Missão concluída! Você fez a diferença na comunidade. Continue assim! 🌟`
-            );
-          } else {
-            await sendMessage(
-              chatId,
-              'Ainda não temos uma missão pendente para você. Quer uma agora? Digite /missao 😊'
-            );
-          }
-          break;
-        }
 
         case 'buscar': {
           const resultadoBusca = await executarBusca(chatId, tool.termo, session);

@@ -1,0 +1,3 @@
+# Protocolo de ferramentas do LLM via marcadores de texto
+
+A IA decide quando usar uma ferramenta emitindo marcadores `[[FERRAMENTA:parâmetros]]` no texto da resposta, que o webhook parseia e executa (webhook.js:42-89). Escolhemos marcadores de texto em vez de function calling nativo do provedor por portabilidade: o mesmo formato funciona tanto na OpenCode Zen quanto no OpenRouter (fallback), sem depender do suporte de cada provedor. Regra derivada: todo marcador deve estar documentado no prompt, senão vira código morto (como ocorreu com `[[MISSAO:]]`/`[[CONFIRMAR:]]` — eliminados, ver ADR-0001).

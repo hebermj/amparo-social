@@ -1,0 +1,3 @@
+# Lembretes Proativos via Vercel Cron
+
+Para o V1.1, os lembretes de atividades precisam ser enviados pelo sistema em horário configurado, sem ação do usuário. Como o código atual não tem nenhum agendador, decidimos usar Vercel Cron (`vercel.json` → `crons`), que chama um endpoint do webhook responsável por consultar usuários com `pref_horario` e enviar os lembretes via Telegram. Alternativa considerada — enviar incentivos apenas dentro da conversa quando o usuário abre o chat — foi rejeitada porque não atende ao requisito de envio proativo. Consequência: o agendamento fica acoplado à infraestrutura Vercel já usada.
