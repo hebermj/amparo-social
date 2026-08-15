@@ -12,6 +12,7 @@
 const SEARXNG_URL = process.env.SEARXNG_URL; // ex: "http://192.168.1.100:4000"
 const SEARXNG_API_KEY = process.env.SEARXNG_API_KEY;
 const BING_API_KEY = process.env.BING_API_KEY;
+const CIDADE_PADRAO = process.env.CIDADE_PADRAO || '';
 
 /**
  * Normaliza os resultados dos diferentes provedores para um formato único.
@@ -109,9 +110,9 @@ async function buscarBing(termo) {
  * Monta o termo de busca adicionando contexto de cidade e público,
  * sem duplicar palavras que já estão no termo original.
  */
- function montarTermoBusca(interesses, cidade = 'Santo André') {
+ function montarTermoBusca(interesses, cidade = CIDADE_PADRAO) {
    let base = interesses.join(' ').trim();
-   if (!base.toLowerCase().includes(cidade.toLowerCase())) {
+   if (cidade && !base.toLowerCase().includes(cidade.toLowerCase())) {
      base += ` ${cidade}`;
    }
    if (!base.toLowerCase().includes('idoso') && !base.toLowerCase().includes('terceira idade')) {
@@ -127,10 +128,10 @@ async function buscarBing(termo) {
  * Interface principal: busca atividades na web.
  *
  * @param {string[]} interesses — Lista de interesses (ex: ["pintura", "arte"])
- * @param {string} [cidade] — Cidade para filtrar (default: Santo André)
+ * @param {string} [cidade] — Cidade para filtrar (default: CIDADE_PADRAO)
  * @returns {Promise<object[]>} — Array de resultados normalizados
  */
-async function buscarAtividades(interesses, cidade = 'Santo André') {
+async function buscarAtividades(interesses, cidade = CIDADE_PADRAO) {
   const termo = montarTermoBusca(interesses, cidade);
   console.log(`[SEARCH] Buscando: "${termo}"`);
 

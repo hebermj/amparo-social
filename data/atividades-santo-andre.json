@@ -10,7 +10,8 @@
     "bairro": "Vila Bastos",
     "parceiro": "Sesc",
     "contato": "(11) 4469-1200",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 2,
@@ -23,7 +24,8 @@
     "bairro": "Centro",
     "parceiro": "Prefeitura",
     "contato": "(11) 4433-0780",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 3,
@@ -36,7 +38,8 @@
     "bairro": "Vila Assunção",
     "parceiro": "Prefeitura",
     "contato": "(11) 4436-8700",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 4,
@@ -49,7 +52,8 @@
     "bairro": "Centro",
     "parceiro": "CRAS",
     "contato": "(11) 4433-1900",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 5,
@@ -62,7 +66,8 @@
     "bairro": "Centro",
     "parceiro": "Prefeitura",
     "contato": "(11) 4433-1700",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 6,
@@ -75,7 +80,8 @@
     "bairro": "Jardim",
     "parceiro": "Prefeitura",
     "contato": "(11) 4433-1900",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 7,
@@ -88,7 +94,8 @@
     "bairro": "Vila Bastos",
     "parceiro": "Sesc",
     "contato": "(11) 4469-1200",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 8,
@@ -101,7 +108,8 @@
     "bairro": "Centro",
     "parceiro": "Associação Comercial",
     "contato": "",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 9,
@@ -114,7 +122,8 @@
     "bairro": "Jardim Santo André",
     "parceiro": "UBS",
     "contato": "(11) 4433-2000",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 10,
@@ -127,7 +136,8 @@
     "bairro": "Vila Gilda",
     "parceiro": "ONG",
     "contato": "",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 11,
@@ -140,7 +150,8 @@
     "bairro": "Centro",
     "parceiro": "UBS",
     "contato": "(11) 4433-2100",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   },
   {
     "id": 12,
@@ -153,6 +164,7 @@
     "bairro": "Vila Bastos",
     "parceiro": "Sesc",
     "contato": "(11) 4469-1200",
-    "link_inscricao": ""
+    "link_inscricao": "",
+    "cidade": "Santo André"
   }
 ]

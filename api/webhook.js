@@ -10,7 +10,8 @@
  */
 
 const { sendMessage } = require('./_lib/telegram');
-const { processWithLLM, getSession, cleanToolMarkers } = require('./_lib/llm');
+const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
+const { getSession, saveSession } = require('./_lib/db');
 const { recomendarAtividades, missaoAleatoria } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
 
@@ -76,13 +77,26 @@ function parseTools(reply) {
     });
   }
 
+  // [[PERFIL:nome:cidade:bairro:interesse1,interesse2]]
+  const perfil = reply.match(/\[\[PERFIL:([^\]]+)\]\]/);
+  if (perfil) {
+    const [nome, cidade, bairro, interessesStr] = perfil[1].split(':');
+    tools.push({
+      type: 'perfil',
+      nome: (nome || '').trim(),
+      cidade: (cidade || '').trim(),
+      bairro: (bairro || '').trim(),
+      interesses: interessesStr ? interessesStr.split(',').map((s) => s.trim()) : [],
+    });
+  }
+
   return tools;
 }
 
 // ── Ferramentas ────────────────────────────────────────────────
 
-async function executarRecomendar(chatId, bairro, interesses) {
-  const atvs = recomendarAtividades(bairro, interesses);
+async function executarRecomendar(chatId, cidade, bairro, interesses) {
+  const atvs = recomendarAtividades(cidade, bairro, interesses);
   if (atvs.length === 0) {
     await sendMessage(chatId, 'Não encontrei atividades cadastradas para essa região no momento. 😕');
     return;
@@ -91,18 +105,28 @@ async function executarRecomendar(chatId, bairro, interesses) {
   atvs.forEach((a, i) => {
     const data = new Date(a.data_hora);
     const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
-    resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${data.getHours()}h\n\n`;
+    const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    resp += `${i + 1}. *${a.nome}*\n   📍 ${a.endereco}\n   📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n\n`;
   });
   resp += '_Qual te interessou? Me fala!_ 😊';
   await sendMessage(chatId, resp);
 }
 
-async function executarMissao(chatId) {
-  const missao = missaoAleatoria();
+async function executarMissao(chatId, session) {
+  const missao = missaoAleatoria(session.user?.cidade);
   if (!missao) {
     await sendMessage(chatId, 'Ainda não tenho missões disponíveis. 😕');
     return;
   }
+
+  // Registra a missão proposta para validar a confirmação depois
+  session.missoes.push({
+    id: missao.id || Date.now(),
+    descricao: missao.nome,
+    status: 'pendente',
+    pontos: 50,
+  });
+
   await sendMessage(
     chatId,
     `🌟 *Missão Social da Semana!* 🌟\n\n` +
@@ -119,7 +143,7 @@ async function executarBusca(chatId, termo, session) {
   try {
     await sendMessage(chatId, '🔍 Vou pesquisar, só um instante...');
 
-    const resultados = await buscarAtividades([termo]);
+    const resultados = await buscarAtividades([termo], session.user?.cidade);
 
     if (resultados.length === 0) {
       return null;
@@ -164,27 +188,29 @@ module.exports = async (req, res) => {
 
     const chatId = msg.chatId;
     const text = msg.text.trim();
-    const session = getSession(chatId);
+    const session = await getSession(chatId);
+    session.chatId = chatId;
 
     // ── Comandos especiais (não passam pela LLM) ────────────
     if (text === '/start') {
       session.user = null;
       session.history = [];
+      await saveSession(chatId, session);
       await sendMessage(
         chatId,
         'Olá! 🌻 Sou o **Amparo**, seu assistente de bem-estar digital.\n\n' +
-        'Vou ajudar você a encontrar atividades sociais, culturais e de lazer perto da sua casa em **Santo André**.\n\n' +
+        'Vou ajudar você a encontrar atividades sociais, culturais e de lazer perto da sua casa.\n\n' +
         'Para começar, qual é o seu nome?'
       );
       return res.status(200).json({ status: 'start' });
     }
 
     if (text === '/atividades') {
-      return await executarRecomendar(chatId, session.user?.bairro, session.user?.interesses);
+      return await executarRecomendar(chatId, session.user?.cidade, session.user?.bairro, session.user?.interesses);
     }
 
     if (text === '/missao') {
-      return await executarMissao(chatId);
+      return await executarMissao(chatId, session);
     }
 
     if (text === '/pontos') {
@@ -211,25 +237,48 @@ module.exports = async (req, res) => {
 
     for (const tool of tools) {
       switch (tool.type) {
+        case 'perfil':
+          session.user = session.user || {};
+          if (tool.nome) session.user.nome = tool.nome;
+          if (tool.cidade) session.user.cidade = tool.cidade;
+          if (tool.bairro) session.user.bairro = tool.bairro;
+          if (tool.interesses.length) {
+            session.user.interesses = [
+              ...new Set([...(session.user.interesses || []), ...tool.interesses]),
+            ];
+          }
+          break;
+
         case 'recomendar':
-          await executarRecomendar(chatId, tool.bairro, tool.interesses);
+          await executarRecomendar(chatId, session.user?.cidade, tool.bairro, tool.interesses);
           break;
 
         case 'missao':
-          await executarMissao(chatId);
+          await executarMissao(chatId, session);
           break;
 
         case 'pontos':
           await sendMessage(chatId, `⭐ *Pontos Amparo:* ${session.pontos} pts`);
           break;
 
-        case 'confirmar':
-          session.pontos += 50;
-          await sendMessage(
-            chatId,
-            `🎉 *Parabéns!* Missão concluída! Você ganhou **50 Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
-          );
+        case 'confirmar': {
+          // Valida que existe uma missão pendente antes de dar pontos
+          const pendente = session.missoes.find((m) => m.status === 'pendente');
+          if (pendente) {
+            pendente.status = 'concluida';
+            session.pontos += pendente.pontos || 50;
+            await sendMessage(
+              chatId,
+              `🎉 *Parabéns!* Missão concluída! Você ganhou **${pendente.pontos || 50} Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
+            );
+          } else {
+            await sendMessage(
+              chatId,
+              'Ainda não temos uma missão pendente para você. Quer uma agora? Digite /missao 😊'
+            );
+          }
           break;
+        }
 
         case 'buscar': {
           const resultadoBusca = await executarBusca(chatId, tool.termo, session);
@@ -242,6 +291,9 @@ module.exports = async (req, res) => {
         }
       }
     }
+
+    // Persiste a memória do usuário no banco
+    await saveSession(chatId, session);
 
     // Envia o texto final (limpo) para o usuário
     if (textoFinal && textoFinal.trim()) {

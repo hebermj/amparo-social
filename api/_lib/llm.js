@@ -1,13 +1,15 @@
 /**
  * ── LLM Gateway ─────────────────────────────────────────────────
  * Processa mensagens usando OpenCode Zen (ou OpenRouter como fallback).
- * Usa o prompt definido em prompt.js para guiar o comportamento da IA.
+ * Usa o prompt gerado em prompt.js (dinâmico, por cidade) para guiar
+ * o comportamento da IA.
  *
  * Retorna a resposta CRUA da IA (com marcadores [[TOOL:params]]).
  * O webhook é responsável por interpretar os marcadores e limpar o texto.
  */
 
-const { PROMPT } = require('./prompt');
+const { buildPrompt } = require('./prompt');
+const { saveSession } = require('./db');
 
 // ── Provedores disponíveis ────────────────────────────────────
 const PROVIDERS = [];
@@ -30,26 +32,6 @@ if (process.env.OPENROUTER_API_KEY) {
   });
 }
 
-// ── Cache de sessões (em memória) ─────────────────────────────
-const sessions = new Map();
-
-/**
- * Recupera ou cria sessão para um chat.
- * @param {number|string} chatId
- * @returns {object}
- */
-function getSession(chatId) {
-  if (!sessions.has(chatId)) {
-    sessions.set(chatId, {
-      history: [],
-      user: null,
-      pontos: 0,
-      missoes: [],
-    });
-  }
-  return sessions.get(chatId);
-}
-
 /**
  * Remove os marcadores de ferramenta do texto da IA.
  * Ex: "[[RECOMENDAR:centro:cultura]] Que tal..." → "Que tal..."
@@ -61,6 +43,7 @@ function cleanToolMarkers(text) {
     .replace(/\[\[PONTOS:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[CONFIRMAR:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[BUSCAR:[^\]]+\]\]\s*/g, '')
+    .replace(/\[\[PERFIL:[^\]]+\]\]\s*/g, '')
     .trim();
 }
 
@@ -71,10 +54,7 @@ function cleanToolMarkers(text) {
 async function callProvider(provider, messages) {
   const body = {
     model: provider.model,
-    messages: [
-      { role: 'system', content: PROMPT },
-      ...messages,
-    ],
+    messages,
     max_tokens: 1024,
     temperature: 0.7,
   };
@@ -139,6 +119,8 @@ async function processWithLLM(userMessage, session) {
     );
   }
 
+  const systemPrompt = buildPrompt(session);
+
   const messages = [
     ...session.history.slice(-6).map((m) => ({
       role: m.role,
@@ -152,7 +134,10 @@ async function processWithLLM(userMessage, session) {
   for (let attempt = 0; attempt < 2; attempt++) {
     for (const provider of PROVIDERS) {
       try {
-        const reply = await callProvider(provider, messages);
+        const reply = await callProvider(provider, [
+          { role: 'system', content: systemPrompt },
+          ...messages,
+        ]);
 
         // Provider retornou null (conteúdo vazio) → tenta próximo
         if (reply === null) {
@@ -167,6 +152,9 @@ async function processWithLLM(userMessage, session) {
         if (session.history.length > 12) {
           session.history = session.history.slice(-12);
         }
+
+        // Persiste a memória do usuário no banco
+        await saveSession(session.chatId, session);
 
         // Retorna a resposta CRUA (com marcadores) para o webhook processar
         return reply;
@@ -184,4 +172,4 @@ async function processWithLLM(userMessage, session) {
   return '❌ Desculpe, não consegui processar sua mensagem agora. Tente novamente em alguns instantes.';
 }
 
-module.exports = { processWithLLM, getSession, cleanToolMarkers };
+module.exports = { processWithLLM, cleanToolMarkers };
