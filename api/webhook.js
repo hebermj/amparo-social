@@ -58,11 +58,6 @@ function parseTools(reply) {
     tools.push({ type: 'missao' });
   }
 
-  // [[PONTOS:usuario_id]]
-  if (reply.match(/\[\[PONTOS:[^\]]+\]\]/)) {
-    tools.push({ type: 'pontos' });
-  }
-
   // [[CONFIRMAR:missao_id]]
   if (reply.match(/\[\[CONFIRMAR:[^\]]+\]\]/)) {
     tools.push({ type: 'confirmar' });
@@ -124,7 +119,6 @@ async function executarMissao(chatId, session) {
     id: missao.id || Date.now(),
     descricao: missao.nome,
     status: 'pendente',
-    pontos: 50,
   });
 
   await sendMessage(
@@ -213,14 +207,6 @@ module.exports = async (req, res) => {
       return await executarMissao(chatId, session);
     }
 
-    if (text === '/pontos') {
-      await sendMessage(
-        chatId,
-        `⭐ *Seus Pontos Amparo:* ${session.pontos} pts\n\nContinue participando das missões! 🎉`
-      );
-      return res.status(200).json({ status: 'pontos' });
-    }
-
     // ── Processamento com IA ────────────────────────────────
     const rawReply = await processWithLLM(text, session);
 
@@ -257,19 +243,14 @@ module.exports = async (req, res) => {
           await executarMissao(chatId, session);
           break;
 
-        case 'pontos':
-          await sendMessage(chatId, `⭐ *Pontos Amparo:* ${session.pontos} pts`);
-          break;
-
         case 'confirmar': {
-          // Valida que existe uma missão pendente antes de dar pontos
+          // Valida que existe uma missão pendente antes de confirmar
           const pendente = session.missoes.find((m) => m.status === 'pendente');
           if (pendente) {
             pendente.status = 'concluida';
-            session.pontos += pendente.pontos || 50;
             await sendMessage(
               chatId,
-              `🎉 *Parabéns!* Missão concluída! Você ganhou **${pendente.pontos || 50} Pontos Amparo**!\nTotal: ${session.pontos} pts. Continue assim! 🌟`
+              `🎉 *Parabéns!* Missão concluída! Você fez a diferença na comunidade. Continue assim! 🌟`
             );
           } else {
             await sendMessage(

@@ -21,7 +21,7 @@ O Amparo é um assistente conversacional acessado via Telegram — ferramenta qu
 - Cadastro e perfil do usuário (interesses, região, preferências)
 - Recomendação personalizada de atividades sociais e comunitárias
 - Sistema de lembretes proativos via Telegram
-- Missões Sociais com sistema de gamificação (Pontos Amparo)
+- Missões Sociais com acompanhamento de participação
 - Conversação por texto e áudio
 - IA Proativa que identifica padrões de comportamento e incentiva participação social
 - Integração com bases de dados de atividades locais (Sesc, prefeituras, centros comunitários)
@@ -37,7 +37,6 @@ Este documento cobre o desenvolvimento do **MVP (Minimum Viable Product)** e as 
 | IA | Inteligência Artificial |
 | MVP | Minimum Viable Product (Produto Mínimo Viável) |
 | SRS | Software Requirements Specification (Especificação de Requisitos de Software) |
-| Pontos Amparo | Sistema de gamificação que recompensa participação social |
 | Missão Social | Desafio semanal que estimula interação social |
 | LGPD | Lei Geral de Proteção de Dados (Lei nº 13.709/2018) |
 | RF | Requisito Funcional |
@@ -78,7 +77,7 @@ As principais funções do sistema são:
 2. **Recomendação Personalizada** — sugerir atividades sociais, culturais e físicas com base no perfil
 3. **Lembretes Proativos** — enviar notificações sobre eventos, medicamentos, consultas e compromissos
 4. **Missões Sociais** — propor desafios semanais de participação comunitária
-5. **Pontos Amparo** — sistema de gamificação com acúmulo e troca de pontos
+5. **Missões Sociais** — propor desafios semanais de participação comunitária
 6. **Conversação Natural** — interação por texto e áudio em linguagem simples
 7. **IA Proativa** — monitoramento de engajamento com incentivos personalizados
 8. **Compras Assistidas** (versões futuras) — auxílio na compra de itens essenciais
@@ -141,15 +140,13 @@ As principais funções do sistema são:
 | RF-016 | O usuário deve poder configurar horários para receber notificações | 🟡 Média |
 | RF-017 | O sistema deve reduzir a frequência de lembretes se o usuário ignorá-los repetidamente | 🔵 Baixa |
 
-### 3.4 Módulo: Missões Sociais e Pontos Amparo
+### 3.4 Módulo: Missões Sociais
 
 | Código | Descrição | Prioridade |
 |--------|-----------|------------|
 | RF-018 | O sistema deve propor uma Missão Social semanal personalizada ao usuário | 🟡 Média |
 | RF-019 | O sistema deve permitir que o usuário confirme a realização de uma missão (via texto, áudio ou foto) | 🟡 Média |
-| RF-020 | O sistema deve atribuir Pontos Amparo ao usuário quando uma missão é concluída | 🟡 Média |
-| RF-021 | O sistema deve permitir que o usuário consulte seu saldo de Pontos Amparo | 🔵 Baixa |
-| RF-022 | O sistema deve permitir a troca de Pontos Amparo por benefícios de parceiros | 🔵 Baixa |
+| RF-021 | O sistema deve registrar as missões realizadas pelo usuário | 🔵 Baixa |
 | RF-023 | O sistema deve enviar mensagem de reconhecimento e incentivo ao completar uma missão | 🟡 Média |
 | RF-024 | O sistema deve notificar o usuário sobre novas missões disponíveis | 🟡 Média |
 
@@ -171,7 +168,7 @@ As principais funções do sistema são:
 | RF-031 | O sistema deve aceitar mensagens de **áudio** e transcrevê-las para processamento | 🟡 Média |
 | RF-032 | O sistema deve responder em linguagem simples, acolhedora e em português brasileiro | 🔴 Alta |
 | RF-033 | O sistema deve manter o contexto da conversa por sessão | 🔴 Alta |
-| RF-034 | O sistema deve oferecer botões rápidos para ações comuns (Ver missão, Meus pontos, Atividades hoje) | 🟡 Média |
+| RF-034 | O sistema deve oferecer botões rápidos para ações comuns (Ver missão, Atividades hoje) | 🟡 Média |
 | RF-035 | O sistema deve permitir que o usuário solicite ajuda a qualquer momento com o comando `/ajuda` | 🔵 Baixa |
 
 ---
@@ -269,7 +266,7 @@ As principais funções do sistema são:
      ┌────────┴────────┐     ┌──────────┴──────────┐
      │   PostgreSQL    │     │  Base de Atividades  │
      │  (usuários,     │     │  (JSON / Planilha)   │
-     │   pontos,log)   │     │  Sesc, Prefeitura,   │
+     │   (usuários,     │     │  Sesc, Prefeitura,   │
      │                 │     │  Centros, Parceiros  │
      └─────────────────┘     └─────────────────────┘
 ```
@@ -334,8 +331,7 @@ IDOSO                        AMPARO (IA)
        │ ◄──────────────────────── │
        │                            │
        │  5. "Parabéns, Maria! 🎉   │
-       │     Você ganhou 50 Pontos  │
-       │     Amparo! Total: 150 pts │
+       │     Que bom que você foi!  │
        │     Continue assim!"       │
        │ ────────────────────────►  │
 ```
@@ -396,7 +392,6 @@ CREATE TABLE missoes (
     atividade_id    INTEGER REFERENCES atividades(id),
     titulo          VARCHAR(200) NOT NULL,
     descricao       TEXT,
-    pontos          INTEGER DEFAULT 50,
     data_inicio     DATE DEFAULT CURRENT_DATE,
     data_fim        DATE,
     status          VARCHAR(20) DEFAULT 'pendente',  -- 'pendente','concluida','expirada'
@@ -407,19 +402,6 @@ CREATE TABLE missoes (
 
 CREATE INDEX idx_missoes_usuario ON missoes(usuario_id);
 CREATE INDEX idx_missoes_status ON missoes(status);
-
--- ── Pontos Amparo ─────────────────────────────────────────
-CREATE TABLE pontos_amparo (
-    id              SERIAL PRIMARY KEY,
-    usuario_id      INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-    missao_id       INTEGER REFERENCES missoes(id),
-    quantidade      INTEGER NOT NULL,
-    tipo            VARCHAR(20) DEFAULT 'ganho',  -- 'ganho','troca'
-    descricao       VARCHAR(200),
-    criado_em       TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_pontos_usuario ON pontos_amparo(usuario_id);
 
 -- ── Histórico de Conversas ────────────────────────────────
 CREATE TABLE conversas (
@@ -443,7 +425,6 @@ CREATE INDEX idx_conversas_data ON conversas(criado_em);
 | `usuarios` | Dados cadastrais dos idosos | Até 100 usuários |
 | `atividades` | Catálogo de eventos/atividades comunitárias | Até 200 registros (curados manualmente) |
 | `missoes` | Missões sociais atribuídas semanalmente | Até 50/semana |
-| `pontos_amparo` | Transações de pontos (ganhos/trocas) | Até 500/mês |
 | `conversas` | Histórico de interações com a IA | Até 5.000/mês |
 
 ---
@@ -512,8 +493,7 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 | **Conversação** | Texto, histórico de sessão, resposta em linguagem simples | 🔴 Essencial |
 | **Recomendação** | Base curada de atividades, filtro por região e interesse | 🔴 Essencial |
 | **Lembretes** | Notificações semanais de atividades | 🟡 Importante |
-| **Missões Sociais** | Missão semanal, confirmação por texto, sistema de pontos | 🟡 Importante |
-| **Pontos Amparo** | Acúmulo, consulta de saldo | 🟡 Importante |
+| **Missões Sociais** | Missão semanal, confirmação por texto | 🟡 Importante |
 | **IA Proativa** | Mensagens de incentivo, detecção básica de engajamento | 🔵 Desejável |
 
 ### 8.2 O que NÃO está no MVP
@@ -526,7 +506,7 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 | Integração automática com calendários públicos | Depende de API de prefeituras e parceiros | V3 |
 | Painel administrativo | Não necessário para validação com usuários | V4 |
 | Expansão para múltiplas cidades | MVP focado em uma cidade-piloto (Santo André) | V4 |
-| Troca de pontos por benefícios | Depende de cadastro de parceiros | V4 |
+| Compra de benefícios com parceiros | Depende de cadastro de parceiros | V4 |
 
 ### 8.3 Critérios de Aceitação do MVP
 
@@ -536,7 +516,7 @@ O MVP contempla as funcionalidades essenciais para validar a proposta de valor c
 | C-02 | Sistema recomenda ao menos 3 atividades relevantes para o perfil do usuário | Funcional |
 | C-03 | Lembretes são enviados no horário configurado pelo usuário | Funcional |
 | C-04 | Usuário recebe uma Missão Social por semana | Funcional |
-| C-05 | Usuário consulta saldo de Pontos Amparo | Funcional |
+| C-05 | Usuário recebe reconhecimento ao completar uma missão | Funcional |
 | C-06 | Sistema responde 95% das mensagens em até 10 segundos | Desempenho |
 | C-07 | Fallback para OpenRouter quando OpenCode Zen falha | Confiabilidade |
 | C-08 | Dados do usuário são armazenados somente após consentimento explícito | Segurança |
@@ -552,7 +532,7 @@ V1 ─ MVP (Julho 2026)
   ├── Cadastro + Perfil
   ├── Recomendação de atividades (base curada)
   ├── Lembretes semanais
-  ├── Missões Sociais + Pontos Amparo (básico)
+  ├── Missões Sociais
   ├── Conversação texto (LLM)
   └── Telegram como canal único
 
@@ -573,7 +553,6 @@ V3 ─ Integração com Calendários Públicos (Setembro 2026)
 V4 ─ Escala (Outubro 2026+)
   ├── Expansão para novas cidades
   ├── Painel institucional para parceiros
-  ├── Troca de Pontos Amparo (parceiros)
   ├── Envolvimento de familiares/cuidadores
   └── Métricas de impacto social
 ```
@@ -599,12 +578,12 @@ V4 ─ Escala (Outubro 2026+)
 | Amparo | Assistente conversacional para idosos |
 | Bairro | Divisão geográfica usada para filtrar atividades locais |
 | Envelhecimento Ativo | Conceito da OMS: processo de otimizar oportunidades de saúde, participação e segurança |
-| Gamificação | Uso de elementos de jogos (pontos, missões) para engajar usuários |
+| Gamificação | Uso de elementos de jogos (missões) para engajar usuários |
 | Isolamento Social | Ausência de contato ou interação com a comunidade |
 | LGPD | Lei Geral de Proteção de Dados Pessoais (Brasil) |
 | LLM | Large Language Model (Modelo de Linguagem de Grande Escala) |
 | Missão Social | Desafio semanal que estimula interação comunitária |
-| Pontos Amparo | Sistema de recompensa por participação social |
+| Missão Social | Desafio semanal que estimula interação comunitária |
 | Provedor LLM | Serviço de API que fornece acesso a modelos de IA |
 
 ### 10.3 Prompt do Sistema (LLM)
@@ -712,7 +691,6 @@ detectar a intenção correta:
 |----------|-----------|-----------|
 | Usuário quer ver atividades | `recomendar_atividades(bairro, interesses)` | Retorna lista de atividades filtradas por bairro e interesses |
 | Usuário completou 1 semana | `criar_missao_social(usuario_id)` | Gera missão semanal personalizada |
-| Usuário pergunta saldo | `consultar_pontos(usuario_id)` | Retorna total de Pontos Amparo |
 | Hora de lembrar | `lembrete_atividades(usuario_id)` | Envia lembretes programados das atividades |
 | Usuário confirma presença | `confirmar_presenca(missao_id, tipo_confirmacao)` | Registra conclusão de missão (texto, áudio ou foto) |
 ```
