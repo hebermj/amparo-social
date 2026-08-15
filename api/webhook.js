@@ -14,7 +14,7 @@ const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
 const { getSession, saveSession, listarSessoes } = require('./_lib/db');
 const { recomendarComFallback, recomendarAtividades } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
-const { lembretesDevidos, atividadesFuturas } = require('./_lib/proativo');
+const { lembretesDevidos, atividadesFuturas, inativosDesde } = require('./_lib/proativo');
 
 // ── Utilitários ────────────────────────────────────────────────
 
@@ -206,6 +206,51 @@ async function executarLembretes(now) {
   return enviados;
 }
 
+const DIAS_INATIVIDADE = 3;
+const INTERVALO_INCENTIVO_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * Executado pelo Vercel Cron. Para cada usuário 3+ dias sem interagir,
+ * envia uma mensagem acolhedora de incentivo retomando a conversa.
+ * Idempotente: no máximo um incentivo a cada 7 dias por usuário.
+ */
+async function executarIncentivos(now) {
+  const sessions = await listarSessoes();
+  const inativos = inativosDesde(sessions, DIAS_INATIVIDADE, now);
+
+  let enviados = 0;
+  for (const sessao of inativos) {
+    const chatId = sessao.chatId;
+    try {
+      const ultimoIncentivo = sessao.ultimoIncentivoEm;
+      if (
+        ultimoIncentivo &&
+        now.getTime() - new Date(ultimoIncentivo).getTime() < INTERVALO_INCENTIVO_MS
+      ) {
+        continue;
+      }
+
+      const nome = sessao.user?.nome;
+      const abertura = nome ? `Oi, ${nome}! 🌻` : 'Oi! 🌻';
+      await sendMessage(
+        chatId,
+        `${abertura} Faz uns dias que não conversamos.\n\n` +
+        `Quer que eu te mostre atividades legais perto de você para essa semana? ` +
+        `É só me chamar! Estou aqui sempre que precisar. 💛`
+      );
+
+      sessao.ultimoIncentivoEm = now.toISOString();
+      await saveSession(chatId, sessao);
+      enviados += 1;
+    } catch (err) {
+      console.error(`[CRON] Falha no incentivo de ${chatId}:`, err.message);
+    }
+  }
+
+  console.log(`[CRON] Incentivos: ${enviados} enviados de ${inativos.length} inativos.`);
+  return enviados;
+}
+
 // ── Handler Principal ──────────────────────────────────────────
 
 module.exports = async (req, res) => {
@@ -215,8 +260,9 @@ module.exports = async (req, res) => {
 
   if (ehCron) {
     try {
-      const enviados = await executarLembretes(new Date());
-      return res.status(200).json({ status: 'cron', enviados });
+      const lembretes = await executarLembretes(new Date());
+      const incentivos = await executarIncentivos(new Date());
+      return res.status(200).json({ status: 'cron', lembretes, incentivos });
     } catch (err) {
       console.error('[CRON ERROR]', err.message);
       return res.status(200).json({ status: 'cron_error', error: err.message });
@@ -237,6 +283,8 @@ module.exports = async (req, res) => {
     const text = msg.text.trim();
     const session = await getSession(chatId);
     session.chatId = chatId;
+    session.ultimaInteracaoEm = new Date().toISOString();
+    session.ultimoIncentivoEm = null;
 
     // ── Comandos especiais (não passam pela LLM) ────────────
     if (text === '/start') {
@@ -253,6 +301,7 @@ module.exports = async (req, res) => {
     }
 
     if (text === '/atividades') {
+      await saveSession(chatId, session);
       return await executarRecomendar(chatId, session.user?.cidade, session.user?.bairro, session.user?.interesses);
     }
 
@@ -261,6 +310,7 @@ module.exports = async (req, res) => {
 
     // Mensagem de erro direta
     if (rawReply.startsWith('❌')) {
+      await saveSession(chatId, session);
       await sendMessage(chatId, rawReply);
       return res.status(200).json({ status: 'error', error: rawReply });
     }

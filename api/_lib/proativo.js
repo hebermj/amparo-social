@@ -80,4 +80,22 @@ function atividadesFuturas(atividades, agora = new Date()) {
     .sort((a, b) => new Date(a.data_hora) - new Date(b.data_hora));
 }
 
-module.exports = { lembretesDevidos, atividadesFuturas, normalizarHorario, horaLocal, HORARIO_PADRAO, FUSO_BRASILIA_HORAS };
+/**
+ * Retorna as sessões sem interação há `dias` ou mais. Uma sessão é
+ * considerada inativa quando ultimaInteracaoEm é igual ou anterior ao corte.
+ * Sessões sem interação registrada não são retornadas.
+ *
+ * @param {object[]} sessions — sessões com { chatId, ultimaInteracaoEm }
+ * @param {number} dias
+ * @param {Date} [agora]
+ * @returns {object[]}
+ */
+function inativosDesde(sessions, dias, agora = new Date()) {
+  const corte = agora.getTime() - dias * 24 * 3600 * 1000;
+  return sessions.filter((s) => {
+    if (!s.ultimaInteracaoEm) return false;
+    return new Date(s.ultimaInteracaoEm).getTime() <= corte;
+  });
+}
+
+module.exports = { lembretesDevidos, atividadesFuturas, inativosDesde, normalizarHorario, horaLocal, HORARIO_PADRAO, FUSO_BRASILIA_HORAS };
