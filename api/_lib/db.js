@@ -110,4 +110,22 @@ async function deleteSession(chatId) {
   await pool.query('DELETE FROM sessions WHERE chat_id = $1', [key]);
 }
 
-module.exports = { getSession, saveSession, deleteSession };
+// ── Listagem (usada pelos envios proativos do cron) ──────────
+async function listarSessoes() {
+  if (!pool) {
+    const todas = [];
+    for (const [chatId, sessao] of memoryStore.entries()) {
+      todas.push({ chatId, ...sessao });
+    }
+    return todas;
+  }
+
+  await initDb();
+  const res = await pool.query('SELECT chat_id, data FROM sessions');
+  return res.rows.map((r) => ({
+    chatId: r.chat_id,
+    ...r.data,
+  }));
+}
+
+module.exports = { getSession, saveSession, deleteSession, listarSessoes };

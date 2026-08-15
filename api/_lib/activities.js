@@ -52,9 +52,10 @@ try {
  * @param {string} [cidade]
  * @param {string} [bairro]
  * @param {string[]} [interesses]
+ * @param {number} [limite=5] — quantidade máxima de resultados
  * @returns {object[]}
  */
-function recomendarAtividades(cidade, bairro, interesses = []) {
+function recomendarAtividades(cidade, bairro, interesses = [], limite = 5) {
   let resultado = [...atividades];
 
   // Filtra por cidade (se informada)
@@ -83,8 +84,8 @@ function recomendarAtividades(cidade, bairro, interesses = []) {
   // Ordena por data (mais próximos primeiro)
   resultado.sort((a, b) => new Date(a.data_hora) - new Date(b.data_hora));
 
-  // Retorna até 5 resultados
-  return resultado.slice(0, 5);
+  // Retorna até `limite` resultados
+  return resultado.slice(0, limite);
 }
 
 /**

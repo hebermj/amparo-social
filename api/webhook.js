@@ -11,9 +11,10 @@
 
 const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
-const { getSession, saveSession } = require('./_lib/db');
-const { recomendarComFallback } = require('./_lib/activities');
+const { getSession, saveSession, listarSessoes } = require('./_lib/db');
+const { recomendarComFallback, recomendarAtividades } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
+const { lembretesDevidos, atividadesFuturas } = require('./_lib/proativo');
 
 // ── Utilitários ────────────────────────────────────────────────
 
@@ -151,9 +152,77 @@ async function executarBusca(chatId, termo, session) {
   }
 }
 
+// ── Lembretes Proativos (cron) ────────────────────────────────
+
+/**
+ * Executado pelo Vercel Cron (User-Agent: vercel-cron/1.0).
+ * Para cada sessão devida (horário preferido == hora atual, ainda não
+ * notificada hoje), envia um Lembrete Proativo com a atividade futura
+ * mais próxima. Idempotente: marca ultimoLembreteEm.
+ */
+async function executarLembretes(now) {
+  const sessions = await listarSessoes();
+  const devidos = lembretesDevidos(sessions, now);
+
+  let enviados = 0;
+  for (const sessao of devidos) {
+    const chatId = sessao.chatId;
+    try {
+      const futuro = atividadesFuturas(
+        recomendarAtividades(
+          sessao.user?.cidade,
+          sessao.user?.bairro,
+          sessao.user?.interesses,
+          50
+        ),
+        now
+      );
+      if (futuro.length === 0) continue;
+
+      const proxima = futuro[0];
+      const data = new Date(proxima.data_hora);
+      const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
+      const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const nome = sessao.user?.nome || '';
+
+      await sendMessage(
+        chatId,
+        `Olá, ${nome}! 🌻 Lembrete da Amparo:\n\n` +
+        `*${proxima.nome}* está chegando!\n` +
+        `📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n` +
+        (proxima.endereco ? `📍 ${proxima.endereco}\n` : '') +
+        `\nQuer saber mais? É só me chamar! 😊`
+      );
+
+      sessao.ultimoLembreteEm = now.toISOString();
+      await saveSession(chatId, sessao);
+      enviados += 1;
+    } catch (err) {
+      console.error(`[CRON] Falha no lembrete de ${chatId}:`, err.message);
+    }
+  }
+
+  console.log(`[CRON] Lembretes: ${enviados} enviados de ${devidos.length} devidos.`);
+  return enviados;
+}
+
 // ── Handler Principal ──────────────────────────────────────────
 
 module.exports = async (req, res) => {
+  // Vercel Cron dispara um GET (não POST) com User-Agent "vercel-cron/1.0"
+  // e o header x-vercel-cron-schedule. Verificamos antes do gate de método.
+  const ehCron = req.headers['user-agent']?.includes('vercel-cron');
+
+  if (ehCron) {
+    try {
+      const enviados = await executarLembretes(new Date());
+      return res.status(200).json({ status: 'cron', enviados });
+    } catch (err) {
+      console.error('[CRON ERROR]', err.message);
+      return res.status(200).json({ status: 'cron_error', error: err.message });
+    }
+  }
+
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'ok' });
   }
