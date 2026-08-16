@@ -15,6 +15,16 @@ const { getSession, saveSession, listarSessoes } = require('./_lib/db');
 const { recomendarComFallback, recomendarAtividades } = require('./_lib/activities');
 const { buscarAtividades } = require('./_lib/search');
 const { lembretesDevidos, atividadesFuturas, inativosDesde } = require('./_lib/proativo');
+const {
+  mensagemStart,
+  mensagemSemAtividades,
+  mensagemAtividades,
+  mensagemBuscaPensando,
+  mensagemBuscaResultados,
+  mensagemBuscaVazia,
+  mensagemLembrete,
+  mensagemIncentivo,
+} = require('./_lib/mensagens');
 
 // ── Utilitários ────────────────────────────────────────────────
 
@@ -93,25 +103,10 @@ function parseTools(reply) {
 async function executarRecomendar(chatId, cidade, bairro, interesses) {
   const { origem, atividades } = await recomendarComFallback(cidade, bairro, interesses);
   if (atividades.length === 0) {
-    await sendMessage(chatId, 'Não encontrei atividades para essa região agora. 😕 Tente me pedir outro tipo de atividade!');
+    await sendMessage(chatId, mensagemSemAtividades());
     return;
   }
-  let resp = origem === 'web'
-    ? 'Encontrei atividades na internet para você! 🌟\n\n'
-    : 'Aqui estão as atividades que encontrei:\n\n';
-  atividades.slice(0, 5).forEach((a, i) => {
-    resp += `${i + 1}. *${a.nome}*\n`;
-    if (a.endereco) resp += `   📍 ${a.endereco}\n`;
-    if (a.data_hora) {
-      const data = new Date(a.data_hora);
-      const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
-      const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      resp += `   📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n`;
-    }
-    resp += '\n';
-  });
-  resp += '_Qual te interessou? Me fala!_ 😊';
-  await sendMessage(chatId, resp);
+  await sendMessage(chatId, mensagemAtividades(atividades, origem));
 }
 
 /**
@@ -120,7 +115,7 @@ async function executarRecomendar(chatId, cidade, bairro, interesses) {
  */
 async function executarBusca(chatId, termo, session) {
   try {
-    await sendMessage(chatId, '🔍 Vou pesquisar, só um instante...');
+    await sendMessage(chatId, mensagemBuscaPensando());
 
     const resultados = await buscarAtividades([termo], session.user?.cidade);
 
@@ -128,22 +123,7 @@ async function executarBusca(chatId, termo, session) {
       return null;
     }
 
-    // Formata até 3 resultados de forma amigável para o idoso
-    const top3 = resultados.slice(0, 3);
-    let texto = 'Encontrei algumas atividades interessantes! 🌟\n\n';
-
-    top3.forEach((r, i) => {
-      const emojis = ['1️⃣', '2️⃣', '3️⃣'];
-      texto += `${emojis[i]} *${r.nome}*\n`;
-      if (r.descricao) {
-        const frase = r.descricao.split(/[.!?]/)[0].substring(0, 120);
-        texto += `   ${frase}.\n`;
-      }
-      texto += '\n';
-    });
-
-    texto += '_Qual te interessou? Me fala que eu ajudo com mais detalhes!_ 😊';
-    return texto;
+    return mensagemBuscaResultados(resultados);
 
   } catch (err) {
     console.error('[BUSCA ERROR]', err.message);
@@ -180,18 +160,11 @@ async function executarLembretes(now) {
       if (futuro.length === 0) continue;
 
       const proxima = futuro[0];
-      const data = new Date(proxima.data_hora);
-      const diaSem = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][data.getDay()];
-      const diaMes = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       const nome = sessao.user?.nome || '';
 
       await sendMessage(
         chatId,
-        `Olá, ${nome}! 🌻 Lembrete da Amparo:\n\n` +
-        `*${proxima.nome}* está chegando!\n` +
-        `📅 ${diaSem}, ${diaMes} às ${data.getHours()}h\n` +
-        (proxima.endereco ? `📍 ${proxima.endereco}\n` : '') +
-        `\nQuer saber mais? É só me chamar! 😊`
+        mensagemLembrete(nome, proxima)
       );
 
       sessao.ultimoLembreteEm = now.toISOString();
@@ -231,12 +204,9 @@ async function executarIncentivos(now) {
       }
 
       const nome = sessao.user?.nome;
-      const abertura = nome ? `Oi, ${nome}! 🌻` : 'Oi! 🌻';
       await sendMessage(
         chatId,
-        `${abertura} Faz uns dias que não conversamos.\n\n` +
-        `Quer que eu te mostre atividades legais perto de você para essa semana? ` +
-        `É só me chamar! Estou aqui sempre que precisar. 💛`
+        mensagemIncentivo(nome)
       );
 
       sessao.ultimoIncentivoEm = now.toISOString();
@@ -293,9 +263,7 @@ module.exports = async (req, res) => {
       await saveSession(chatId, session);
       await sendMessage(
         chatId,
-        'Olá! 🌻 Sou o **Amparo**, seu assistente de bem-estar digital.\n\n' +
-        'Vou ajudar você a encontrar atividades sociais, culturais e de lazer perto da sua casa.\n\n' +
-        'Para começar, qual é o seu nome?'
+        mensagemStart()
       );
       return res.status(200).json({ status: 'start' });
     }
@@ -349,7 +317,7 @@ module.exports = async (req, res) => {
           if (resultadoBusca) {
             textoFinal = resultadoBusca;
           } else {
-            textoFinal = 'Não encontrei atividades específicas para isso agora. 😕 Mas se quiser, posso tentar outro tipo de busca!';
+            textoFinal = mensagemBuscaVazia();
           }
           break;
         }

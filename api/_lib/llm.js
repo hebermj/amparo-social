@@ -10,6 +10,7 @@
 
 const { buildPrompt } = require('./prompt');
 const { saveSession } = require('./db');
+const { mensagemSemChaveIA } = require('./mensagens');
 
 // ── Provedores disponíveis ────────────────────────────────────
 const PROVIDERS = [];
@@ -111,10 +112,7 @@ async function callProvider(provider, messages) {
  */
 async function processWithLLM(userMessage, session) {
   if (PROVIDERS.length === 0) {
-    return (
-      `Olá! 😊 Para eu funcionar, preciso de uma chave de IA configurada.\n\n` +
-      `Peça ao desenvolvedor para definir OPENCODE_ZEN_API_KEY ou OPENROUTER_API_KEY.`
-    );
+    return mensagemSemChaveIA();
   }
 
   const systemPrompt = buildPrompt(session);
