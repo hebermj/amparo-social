@@ -43,6 +43,22 @@ test('T4: parecePedidoDeAtividades reconhece pedidos de atividade', () => {
   }
 });
 
+test('T4: parecePedidoDeAtividades reconhece pedidos de refinamento', () => {
+  const refinamentos = [
+    'isso não é perto de casa, algo mais perto de pinheiros?',
+    'algo mais perto de pinheiros?',
+    'tem algo mais perto?',
+    'tem algo mais perto de casa?',
+    'outra opção mais perto?',
+    'não é perto de casa, tem outra?',
+    'algo mais próximo?',
+    'existe algo mais perto do meu bairro?',
+  ];
+  for (const ref of refinamentos) {
+    assert.ok(parecePedidoDeAtividades(ref), `deveria detectar refinamento: "${ref}"`);
+  }
+});
+
 test('T4: parecePedidoDeAtividades não dispara em conversa comum', () => {
   const naoPedidos = [
     'Meu nome é Maria',
@@ -68,6 +84,15 @@ test('T4: montarTermoBusca cai para interesses do perfil sem termo específico',
   const termo = montarTermoBusca('O que tem pra fazer hoje?', ['pintura', 'arte'], 'Santo André');
   assert.ok(termo.includes('pintura'), `termo deve usar interesses: "${termo}"`);
   assert.ok(termo.includes('arte'), `termo deve usar interesses: "${termo}"`);
+});
+
+test('T4: montarTermoBusca limpa ruído de refinamento (mais perto/outra)', () => {
+  const termo = montarTermoBusca('isso não é perto de casa, algo mais perto de pinheiros?', ['leitura'], 'São Paulo');
+  assert.ok(termo.includes('pinheiros'), `termo deve manter o bairro pedido: "${termo}"`);
+  assert.ok(termo.includes('São Paulo'), `termo deve manter a cidade: "${termo}"`);
+  assert.ok(!termo.includes('perto'), `termo não deve conter "perto": "${termo}"`);
+  assert.ok(!termo.includes('casa'), `termo não deve conter "casa": "${termo}"`);
+  assert.ok(!termo.includes('isso'), `termo não deve conter "isso": "${termo}"`);
 });
 
 test('T4: montarTermoPadrao usa CIDADE_PADRAO quando o perfil é incompleto', () => {

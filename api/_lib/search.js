@@ -160,6 +160,10 @@ const PALAVRAS_GENERICAS = new Set([
   'cursos', 'oficina', 'oficinas', 'vai', 'quero', 'gostaria',
   'encontrar', 'procurar', 'hoje', 'essa', 'este', 'esta', 'região', 'bairro',
   'fazer', 'saber', 'ver', 'como', 'pode', 'poderia', 'me', 'por', 'em',
+  // Refinamentos de recomendação (ex.: "algo mais perto de pinheiros?")
+  'isso', 'nao', 'não', 'casa', 'mais', 'perto', 'proximo', 'próximo',
+  'proxima', 'próxima', 'longe', 'outra', 'outro', 'opcao', 'opção', 'algo',
+  'e', 'é', 'na', 'no', 'pra', 'pro',
 ]);
 
 /**

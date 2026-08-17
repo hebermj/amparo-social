@@ -26,6 +26,9 @@ const FRASES_DE_ATIVIDADE = [
   'o que tem', 'o que fazer', 'o que ha', 'vai ter', 'tem alguma',
   'onde tem', 'sugere', 'recomenda', 'recomendam',
   'pode me sugerir', 'o que podemos fazer', 'o que temos',
+  // Refinamentos de uma recomendação (comuns após o bot responder):
+  'mais perto de', 'mais perto', 'mais próximo', 'mais proximo',
+  'outra opção', 'outra opcao', 'tem outra',
 ];
 
 // ── Proteções de Sessão (T3) ────────────────────────────────────
