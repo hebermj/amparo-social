@@ -101,6 +101,47 @@ async function callProvider(provider, messages) {
 }
 
 /**
+ * Chama os provedores LLM em sequência, com retry, até obter uma
+ * resposta não vazia. Compartilhado pelo chat livre (processWithLLM)
+ * e pela Curadoria da IA (curarResultados).
+ *
+ * @param {string} systemPrompt
+ * @param {object[]} mensagens — mensagens de contexto (role/content)
+ * @returns {Promise<string|null>} — conteúdo cru, ou null se todos falharam
+ */
+async function completarComLLM(systemPrompt, mensagens) {
+  if (PROVIDERS.length === 0) {
+    return null;
+  }
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const provider of PROVIDERS) {
+      try {
+        const reply = await callProvider(provider, [
+          { role: 'system', content: systemPrompt },
+          ...mensagens,
+        ]);
+
+        // Provider retornou null (conteúdo vazio) → tenta próximo
+        if (reply === null) {
+          continue;
+        }
+
+        return reply;
+      } catch (err) {
+        console.error(`[${provider.name}]`, err.message);
+
+        if (err.message.includes('RATE_LIMIT') && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Processa a mensagem do usuário com fallback entre provedores.
  * Retorna a resposta CRUA (com marcadores [[TOOL:params]] inclusos).
  *
@@ -123,47 +164,27 @@ async function processWithLLM(userMessage, session) {
     { role: 'user', content: userMessage },
   ];
 
-  let lastError = null;
+  const reply = await completarComLLM(systemPrompt, messages);
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    for (const provider of PROVIDERS) {
-      try {
-        const reply = await callProvider(provider, [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ]);
-
-        // Provider retornou null (conteúdo vazio) → tenta próximo
-        if (reply === null) {
-          continue;
-        }
-
-        // Salva no histórico (versão limpa, sem marcadores)
-        const displayText = cleanToolMarkers(reply);
-        session.history.push({ role: 'user', content: userMessage });
-        session.history.push({ role: 'assistant', content: displayText });
-        // Mantém apenas as últimas 12 mensagens (6 turnos)
-        if (session.history.length > 12) {
-          session.history = session.history.slice(-12);
-        }
-
-        // Persiste a memória do usuário no banco
-        await saveSession(session.chatId, session);
-
-        // Retorna a resposta CRUA (com marcadores) para o webhook processar
-        return reply;
-      } catch (err) {
-        console.error(`[${provider.name}]`, err.message);
-        lastError = err;
-
-        if (err.message.includes('RATE_LIMIT') && attempt === 0) {
-          await new Promise((r) => setTimeout(r, 2000));
-        }
-      }
-    }
+  // Todos os provedores falharam → erro amigável
+  if (reply === null) {
+    return '❌ Desculpe, não consegui processar sua mensagem agora. Tente novamente em alguns instantes.';
   }
 
-  return '❌ Desculpe, não consegui processar sua mensagem agora. Tente novamente em alguns instantes.';
+  // Salva no histórico (versão limpa, sem marcadores)
+  const displayText = cleanToolMarkers(reply);
+  session.history.push({ role: 'user', content: userMessage });
+  session.history.push({ role: 'assistant', content: displayText });
+  // Mantém apenas as últimas 12 mensagens (6 turnos)
+  if (session.history.length > 12) {
+    session.history = session.history.slice(-12);
+  }
+
+  // Persiste a memória do usuário no banco
+  await saveSession(session.chatId, session);
+
+  // Retorna a resposta CRUA (com marcadores) para o webhook processar
+  return reply;
 }
 
-module.exports = { processWithLLM, cleanToolMarkers };
+module.exports = { processWithLLM, completarComLLM, cleanToolMarkers };

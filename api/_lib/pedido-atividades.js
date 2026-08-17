@@ -11,6 +11,7 @@
 const { recomendarAtividades } = require('./activities');
 const { buscarPorTermo, montarTermoBusca, CIDADE_PADRAO } = require('./search');
 const { mensagemAtividades, mensagemSemAtividades } = require('./mensagens');
+const { curarResultados } = require('./curadoria');
 
 const PALAVRAS_DE_ATIVIDADE = [
   'atividade', 'atividades', 'evento', 'eventos', 'oficina', 'passeio',
@@ -57,7 +58,7 @@ function montarTermoPadrao(texto, session) {
  * @param {Function} [deps.montarTermo] — construtor do termo de busca
  * @param {Function} [deps.recomendarBase] — recomenda da Base local
  * @param {Function} [deps.buscarWeb] — busca na web (SearXNG)
- * @param {Function} [deps.curar] — curadoria pela IA (T2)
+ * @param {Function} [deps.curar] — curadoria pela IA (default: curarResultados)
  * @returns {Promise<string|null>} — mensagem final, ou null se não for
  *   um Pedido de Atividade
  */
@@ -66,7 +67,7 @@ async function processarPedidoDeAtividades(texto, session, deps = {}) {
   const montarTermo = deps.montarTermo || montarTermoPadrao;
   const recomendarBase = deps.recomendarBase || recomendarAtividades;
   const buscarWeb = deps.buscarWeb || ((termo) => buscarPorTermo(termo));
-  const curar = deps.curar || null;
+  const curar = deps.curar || curarResultados;
 
   if (!detectarPedido(texto)) return null;
 
@@ -101,13 +102,17 @@ async function processarPedidoDeAtividades(texto, session, deps = {}) {
   let resposta;
   if (itens.length === 0) {
     resposta = mensagemSemAtividades();
-  } else if (curar) {
-    resposta = await curar(itens, session);
+  } else {
+    try {
+      resposta = await curar(itens, session);
+    } catch (err) {
+      console.error('[ORQUESTRADOR] Curadoria falhou:', err.message);
+      resposta = null;
+    }
+    // Curadoria falhou/saída inválida → template tolerante do T1
     if (!resposta || resposta.trim() === '') {
       resposta = mensagemAtividades(itens, origem);
     }
-  } else {
-    resposta = mensagemAtividades(itens, origem);
   }
 
   session.history = session.history || [];
