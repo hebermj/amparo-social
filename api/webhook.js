@@ -10,7 +10,7 @@
 
 const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
-const { getSession, saveSession, listarSessoes } = require('./_lib/db');
+const { getSession, saveSession, deleteSession, listarSessoes } = require('./_lib/db');
 const { recomendarAtividades } = require('./_lib/activities');
 const {
   processarPedidoDeAtividades,
@@ -21,6 +21,7 @@ const {
   mensagemStart,
   mensagemLembrete,
   mensagemIncentivo,
+  mensagemDadosApagados,
 } = require('./_lib/mensagens');
 
 // ── Utilitários ────────────────────────────────────────────────
@@ -211,6 +212,17 @@ module.exports = async (req, res) => {
         mensagemStart()
       );
       return res.status(200).json({ status: 'start' });
+    }
+
+    // /apagar-dados — exclui a Sessão do usuário atual (LGPD / RNF-011-F).
+    // O próximo getSession recria uma Sessão vazia (cadastro zerado).
+    if (text === '/apagar-dados') {
+      await deleteSession(chatId);
+      await sendMessage(
+        chatId,
+        mensagemDadosApagados()
+      );
+      return res.status(200).json({ status: 'apagado' });
     }
 
     // ── Pedido de Atividade (detecção por heurística, sem depender da IA) ──

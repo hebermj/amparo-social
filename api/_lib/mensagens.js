@@ -26,6 +26,13 @@ function mensagemStart() {
   );
 }
 
+function mensagemDadosApagados() {
+  return (
+    'Pronto! Seu cadastro e seu histórico foram apagados. ' +
+    'Se quiser começar de novo, é só me chamar que eu te ajudo.'
+  );
+}
+
 function mensagemSemChaveIA() {
   return (
     'Olá! Para eu funcionar, preciso de uma chave de IA configurada.\n\n' +
@@ -104,4 +111,5 @@ module.exports = {
   mensagemAtividades,
   mensagemLembrete,
   mensagemIncentivo,
+  mensagemDadosApagados,
 };

@@ -8,6 +8,7 @@ const {
   mensagemAtividades,
   mensagemLembrete,
   mensagemIncentivo,
+  mensagemDadosApagados,
 } = require('../api/_lib/mensagens.js');
 
 const EMOJI = /[\p{Extended_Pictographic}]/u;
@@ -28,6 +29,7 @@ test('T7: nenhuma mensagem de código contém emojis', () => {
     mensagemLembrete('Maria', atividade),
     mensagemIncentivo('Maria'),
     mensagemIncentivo(null),
+    mensagemDadosApagados(),
   ];
   for (const m of mensagens) {
     assert.doesNotMatch(m, EMOJI, `mensagem sem emojis: ${m.slice(0, 40)}...`);
@@ -88,4 +90,12 @@ test('T7: mensagemLembrete e mensagemIncentivo incluem o nome', () => {
   assert.match(mensagemLembrete('Maria', atividade), /Lembrete da Amparo/);
   assert.match(mensagemIncentivo('Maria'), /Oi, Maria!/);
   assert.match(mensagemIncentivo(null), /Oi!/);
+});
+
+test('T7: mensagemDadosApagados confirma a exclusão do cadastro', () => {
+  const msg = mensagemDadosApagados();
+  assert.match(msg, /cadastro/);
+  assert.match(msg, /apagad/);
+  assert.match(msg, /histórico|dados/);
+  assert.doesNotMatch(msg, /permanec|salv|mantid/);
 });
