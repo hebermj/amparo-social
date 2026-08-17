@@ -227,14 +227,25 @@ async function completarComLLM(systemPrompt, mensagens, deps = {}) {
 /**
  * Processa a mensagem do usuário com fallback entre provedores.
  * Retorna a resposta CRUA (com marcadores [[TOOL:params]] inclusos).
+ * Se a LLM estiver não-saudável (429 recente, ex.: logo após a
+ * segunda opinião), pula direto para a mensagem de erro amigável —
+ * evita dobrar a espera do backoff e não queima a cota diária.
  *
  * @param {string} userMessage
  * @param {object} session
+ * @param {object} [deps] — deps injetáveis para teste
+ * @param {Function} [deps.saudavel] — substituto de llmSaudavel
  * @returns {Promise<string>}
  */
-async function processWithLLM(userMessage, session) {
+async function processWithLLM(userMessage, session, deps = {}) {
+  const saudavel = deps.saudavel || llmSaudavel;
+
   if (PROVIDERS.length === 0) {
     return mensagemSemChaveIA();
+  }
+
+  if (!saudavel()) {
+    return '❌ Desculpe, não consegui processar sua mensagem agora. Tente novamente em alguns instantes.';
   }
 
   const systemPrompt = buildPrompt(session);

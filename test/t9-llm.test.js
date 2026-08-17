@@ -9,6 +9,7 @@ const {
   completarComLLM,
   registrarFalhaLLM,
   llmSaudavel,
+  processWithLLM,
 } = require('../api/_lib/llm.js');
 
 function respostaJSON(body, { ok = true, status = 200, headers = {} } = {}) {
@@ -164,4 +165,46 @@ test('T9: um 429 real registra falha no tracker de saúde', async () => {
   }, { esperar: async () => {}, agora: () => base });
   assert.strictEqual(llmSaudavel(base + 60_000), false,
     'falha registrada deve marcar a LLM como não-saudável');
+});
+
+// ── Chat (processWithLLM): não dobrar a espera após um 429 ─────
+
+test('T9: processWithLLM pula o chat quando a LLM está não-saudável', async () => {
+  let chamadasFetch = 0;
+  const original = global.fetch;
+  global.fetch = async () => {
+    chamadasFetch += 1;
+    return respostaJSON({ choices: [{ message: { content: 'oi' } }] });
+  };
+  try {
+    const resposta = await processWithLLM('oi', {
+      chatId: '1',
+      user: null,
+      history: [],
+    }, { saudavel: () => false });
+    assert.ok(resposta.startsWith('❌'), 'deve cair direto na mensagem de erro amigável');
+    assert.strictEqual(chamadasFetch, 0, 'não deve chamar nenhum provedor');
+  } finally {
+    global.fetch = original;
+  }
+});
+
+test('T9: processWithLLM chama o chat normalmente quando a LLM está saudável', async () => {
+  let chamadasFetch = 0;
+  const original = global.fetch;
+  global.fetch = async () => {
+    chamadasFetch += 1;
+    return respostaJSON({ choices: [{ message: { content: 'olá' } }] });
+  };
+  try {
+    const resposta = await processWithLLM('oi', {
+      chatId: '1',
+      user: null,
+      history: [],
+    }, { saudavel: () => true });
+    assert.strictEqual(chamadasFetch, 1, 'deve chamar o provedor');
+    assert.ok(!resposta.startsWith('❌'), 'não deve cair no erro quando saudável');
+  } finally {
+    global.fetch = original;
+  }
 });
