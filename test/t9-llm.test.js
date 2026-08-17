@@ -47,27 +47,42 @@ test('T9: provedor OpenCode Zen envia User-Agent opencode/', async () => {
 
 // ── Retry com backoff em 429 ───────────────────────────────────
 
-test('T9: 429 dispara retry com backoff padrão (5s) quando não há Retry-After', async () => {
+test('T9: backoff padrão (5s) quando todos os provedores tomam 429 na 1ª rodada', async () => {
   const esperas = [];
   let chamadas = 0;
   const resposta = await comFetch(async () => {
     chamadas += 1;
-    if (chamadas === 1) {
+    if (chamadas <= 2) {
       return respostaJSON({ error: 'rate limit' }, { ok: false, status: 429 });
     }
     return respostaJSON({ choices: [{ message: { content: 'recuperei' } }] });
   }, { esperar: async (ms) => esperas.push(ms) });
   assert.strictEqual(resposta, 'recuperei');
-  assert.strictEqual(chamadas, 2, 'deve retentar após o 429');
-  assert.ok(esperas.includes(5000), `backoff padrão deve ser 5000ms: ${esperas.join(', ')}`);
+  assert.strictEqual(chamadas, 3, '2 (1ª rodada 429) + 1 (2ª rodada, primeiro provedor)');
+  assert.deepStrictEqual(esperas, [5000], `um único backoff de 5s: ${esperas.join(', ')}`);
 });
 
-test('T9: 429 honra Retry-After quando presente', async () => {
+test('T9: 429 de um provedor + sucesso do outro → não espera backoff', async () => {
+  const esperas = [];
+  let chamadas = 0;
+  const resposta = await comFetch(async (url) => {
+    chamadas += 1;
+    if (String(url).includes('opencode.ai')) {
+      return respostaJSON({ error: 'rate limit' }, { ok: false, status: 429 });
+    }
+    return respostaJSON({ choices: [{ message: { content: 'funcionou' } }] });
+  }, { esperar: async (ms) => esperas.push(ms) });
+  assert.strictEqual(resposta, 'funcionou');
+  assert.strictEqual(chamadas, 2, '429 no Zen + sucesso no OpenRouter');
+  assert.deepStrictEqual(esperas, [], 'não deve esperar quando um provedor responde');
+});
+
+test('T9: Retry-After é honrado quando todos os provedores tomam 429', async () => {
   const esperas = [];
   let chamadas = 0;
   const resposta = await comFetch(async () => {
     chamadas += 1;
-    if (chamadas === 1) {
+    if (chamadas <= 2) {
       return respostaJSON({ error: 'rate limit' }, {
         ok: false,
         status: 429,
@@ -77,7 +92,25 @@ test('T9: 429 honra Retry-After quando presente', async () => {
     return respostaJSON({ choices: [{ message: { content: 'recuperei' } }] });
   }, { esperar: async (ms) => esperas.push(ms) });
   assert.strictEqual(resposta, 'recuperei');
-  assert.ok(esperas.includes(7000), `deve honrar Retry-After de 7s: ${esperas.join(', ')}`);
+  assert.deepStrictEqual(esperas, [7000], `deve honrar Retry-After de 7s: ${esperas.join(', ')}`);
+});
+
+test('T9: Retry-After é limitado a um teto (não pendura a resposta)', async () => {
+  const esperas = [];
+  let chamadas = 0;
+  const resposta = await comFetch(async () => {
+    chamadas += 1;
+    if (chamadas <= 2) {
+      return respostaJSON({ error: 'rate limit' }, {
+        ok: false,
+        status: 429,
+        headers: { 'retry-after': '300' },
+      });
+    }
+    return respostaJSON({ choices: [{ message: { content: 'ok' } }] });
+  }, { esperar: async (ms) => esperas.push(ms) });
+  assert.strictEqual(resposta, 'ok');
+  assert.ok(esperas.every((ms) => ms <= 10000), `espera deve ser limitada: ${esperas.join(', ')}`);
 });
 
 test('T9: não passa de 2 tentativas por chamada quando o 429 persiste', async () => {
@@ -89,7 +122,24 @@ test('T9: não passa de 2 tentativas por chamada quando o 429 persiste', async (
   }, { esperar: async (ms) => esperas.push(ms) });
   assert.strictEqual(resposta, null, 'sem resposta após todos os retries');
   assert.strictEqual(chamadas, 4, '2 tentativas × 2 provedores');
-  assert.strictEqual(esperas.length, 2, 'backoff apenas na primeira tentativa');
+  assert.strictEqual(esperas.length, 1, 'um único backoff na 1ª rodada');
+});
+
+test('T9: fetch da LLM envia AbortSignal com timeout', async () => {
+  const sinais = [];
+  const original = global.fetch;
+  global.fetch = async (url, opts) => {
+    sinais.push(opts.signal);
+    return respostaJSON({ choices: [{ message: { content: 'oi' } }] });
+  };
+  try {
+    await completarComLLM('sistema', [{ role: 'user', content: 'oi' }], {});
+  } finally {
+    global.fetch = original;
+  }
+  assert.ok(sinais.length > 0, 'deve passar signal ao fetch');
+  assert.ok(sinais.every((s) => s instanceof AbortSignal),
+    'deve ser um AbortSignal (timeout do fetch)');
 });
 
 // ── Tracker de saúde da LLM (folga de rate-limit) ──────────────

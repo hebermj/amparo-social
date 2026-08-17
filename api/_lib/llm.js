@@ -24,6 +24,13 @@ const OPENCODE_USER_AGENT = 'opencode/1.18.16';
 // Backoff padrão em HTTP 429 (quando não há header Retry-After).
 const RETRY_BACKOFF_MS = 5000;
 
+// Teto para o Retry-After: nunca espera mais que isso (não pendura a
+// resposta do usuário).
+const MAX_RETRY_AFTER_MS = 10000;
+
+// Timeout do fetch de cada provedor LLM (como na Busca Web).
+const LLM_TIMEOUT_MS = 10000;
+
 // Janela de saúde da LLM: 429s recentes dentro desta janela marcam a
 // LLM como não-saudável (sem "folga de rate-limit").
 const JANELA_SAUDE_MS = 5 * 60 * 1000;
@@ -106,6 +113,7 @@ async function callProvider(provider, messages) {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -114,7 +122,7 @@ async function callProvider(provider, messages) {
       const e = new Error(`RATE_LIMIT: ${err}`);
       const retryAfter = Number(res.headers?.get('retry-after'));
       if (Number.isFinite(retryAfter) && retryAfter > 0) {
-        e.retryAfterMs = retryAfter * 1000;
+        e.retryAfterMs = Math.min(retryAfter * 1000, MAX_RETRY_AFTER_MS);
       }
       throw e;
     }
@@ -131,6 +139,7 @@ async function callProvider(provider, messages) {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
     if (retryRes.ok) {
       const retryData = await retryRes.json();
@@ -151,7 +160,9 @@ async function callProvider(provider, messages) {
  * e pela Curadoria da IA (curarResultados).
  *
  * Em HTTP 429 (rate-limit), espera o tempo indicado pelo header
- * `Retry-After` quando presente, ou 5s por padrão, antes de retentar.
+ * `Retry-After` quando presente (com teto), ou 5s por padrão — mas
+ * apenas quando TODOS os provedores tomaram 429 na primeira rodada
+ * (rate-limit global). Se algum provedor responde, retorna sem espera.
  * Nunca faz mais de 2 tentativas por chamada — falhas contam na cota
  * diária dos modelos gratuitos.
  *
@@ -171,6 +182,9 @@ async function completarComLLM(systemPrompt, mensagens, deps = {}) {
   }
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    let todos429 = PROVIDERS.length > 0;
+    let retryAfterMs = null;
+
     for (const provider of PROVIDERS) {
       try {
         const reply = await callProvider(provider, [
@@ -180,6 +194,7 @@ async function completarComLLM(systemPrompt, mensagens, deps = {}) {
 
         // Provider retornou null (conteúdo vazio) → tenta próximo
         if (reply === null) {
+          todos429 = false;
           continue;
         }
 
@@ -187,12 +202,22 @@ async function completarComLLM(systemPrompt, mensagens, deps = {}) {
       } catch (err) {
         console.error(`[${provider.name}]`, err.message);
 
-        if (err.message.includes('RATE_LIMIT') && attempt === 0) {
-          registrarFalhaLLM(agora());
-          const esperaMs = err.retryAfterMs || RETRY_BACKOFF_MS;
-          await esperar(esperaMs);
+        if (!err.message.includes('RATE_LIMIT')) {
+          todos429 = false;
+          continue;
+        }
+
+        registrarFalhaLLM(agora());
+        if (err.retryAfterMs && err.retryAfterMs > retryAfterMs) {
+          retryAfterMs = err.retryAfterMs;
         }
       }
+    }
+
+    // Só espera o backoff quando TODOS os provedores da rodada tomaram
+    // 429 (rate-limit global). Se algum respondeu, retorna sem esperar.
+    if (attempt === 0 && todos429) {
+      await esperar(retryAfterMs || RETRY_BACKOFF_MS);
     }
   }
 
