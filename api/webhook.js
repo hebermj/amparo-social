@@ -12,7 +12,10 @@ const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
 const { getSession, saveSession, listarSessoes } = require('./_lib/db');
 const { recomendarAtividades } = require('./_lib/activities');
-const { processarPedidoDeAtividades } = require('./_lib/pedido-atividades');
+const {
+  processarPedidoDeAtividades,
+  segundaOpiniaoPadrao,
+} = require('./_lib/pedido-atividades');
 const { lembretesDevidos, atividadesFuturas, inativosDesde } = require('./_lib/proativo');
 const {
   mensagemStart,
@@ -211,8 +214,11 @@ module.exports = async (req, res) => {
     }
 
     // ── Pedido de Atividade (detecção por heurística, sem depender da IA) ──
-    // `/atividades` e mensagens detectadas entram no mesmo pipeline.
-    const respostaAtividade = await processarPedidoDeAtividades(text, session);
+    // `/atividades` e mensagens detectadas entram no mesmo pipeline. Se a
+    // heurística falhar, a LLM dá uma segunda opinião — só quando saudável.
+    const respostaAtividade = await processarPedidoDeAtividades(text, session, {
+      segundaOpiniao: segundaOpiniaoPadrao,
+    });
     if (respostaAtividade !== null) {
       await saveSession(chatId, session);
       await sendMessage(chatId, respostaAtividade);

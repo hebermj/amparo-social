@@ -15,12 +15,50 @@ const { mensagemSemChaveIA } = require('./mensagens');
 // ── Provedores disponíveis ────────────────────────────────────
 const PROVIDERS = [];
 
+// O provedor OpenCode Zen gateia a capacidade gratuita dos modelos
+// `-free` pelo header User-Agent: apenas requisições com
+// `User-Agent: opencode/...` recebem 200; qualquer outro UA (ex.: o
+// padrão do undici) recebe 429 FreeUsageLimitError.
+const OPENCODE_USER_AGENT = 'opencode/1.18.16';
+
+// Backoff padrão em HTTP 429 (quando não há header Retry-After).
+const RETRY_BACKOFF_MS = 5000;
+
+// Janela de saúde da LLM: 429s recentes dentro desta janela marcam a
+// LLM como não-saudável (sem "folga de rate-limit").
+const JANELA_SAUDE_MS = 5 * 60 * 1000;
+
+// Timestamps dos 429s mais recentes (para o tracker de saúde).
+const falhasRecentes = [];
+
+/**
+ * Registra uma falha de rate-limit no tracker de saúde da LLM.
+ * @param {number} [agora] — relógio injetável (default: Date.now)
+ */
+function registrarFalhaLLM(agora = Date.now()) {
+  falhasRecentes.push(agora);
+}
+
+/**
+ * True quando a LLM está saudável (sem 429 recente na janela).
+ * Expurga falhas fora da janela a cada consulta.
+ * @param {number} [agora] — relógio injetável (default: Date.now)
+ */
+function llmSaudavel(agora = Date.now()) {
+  const limiar = agora - JANELA_SAUDE_MS;
+  while (falhasRecentes.length && falhasRecentes[0] <= limiar) {
+    falhasRecentes.shift();
+  }
+  return falhasRecentes.length === 0;
+}
+
 if (process.env.OPENCODE_ZEN_API_KEY) {
   PROVIDERS.push({
     name: 'opencode-zen',
     apiKey: process.env.OPENCODE_ZEN_API_KEY,
     url: 'https://opencode.ai/zen/v1/chat/completions',
     model: 'deepseek-v4-flash-free',
+    userAgent: OPENCODE_USER_AGENT,
   });
 }
 
@@ -56,19 +94,29 @@ async function callProvider(provider, messages) {
     temperature: 0.7,
   };
 
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${provider.apiKey}`,
+  };
+  if (provider.userAgent) {
+    headers['User-Agent'] = provider.userAgent;
+  }
+
   const res = await fetch(provider.url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${provider.apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const err = await res.text();
     if (res.status === 429) {
-      throw new Error(`RATE_LIMIT: ${err}`);
+      const e = new Error(`RATE_LIMIT: ${err}`);
+      const retryAfter = Number(res.headers?.get('retry-after'));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        e.retryAfterMs = retryAfter * 1000;
+      }
+      throw e;
     }
     throw new Error(`${res.status}: ${err}`);
   }
@@ -81,10 +129,7 @@ async function callProvider(provider, messages) {
   if (!content || content.trim() === '') {
     const retryRes = await fetch(provider.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${provider.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
     });
     if (retryRes.ok) {
@@ -105,11 +150,22 @@ async function callProvider(provider, messages) {
  * resposta não vazia. Compartilhado pelo chat livre (processWithLLM)
  * e pela Curadoria da IA (curarResultados).
  *
+ * Em HTTP 429 (rate-limit), espera o tempo indicado pelo header
+ * `Retry-After` quando presente, ou 5s por padrão, antes de retentar.
+ * Nunca faz mais de 2 tentativas por chamada — falhas contam na cota
+ * diária dos modelos gratuitos.
+ *
  * @param {string} systemPrompt
  * @param {object[]} mensagens — mensagens de contexto (role/content)
+ * @param {object} [deps] — deps injetáveis para teste
+ * @param {Function} [deps.esperar] — substitui setTimeout (relógio)
+ * @param {Function} [deps.agora] — relógio injetável (default: Date.now)
  * @returns {Promise<string|null>} — conteúdo cru, ou null se todos falharam
  */
-async function completarComLLM(systemPrompt, mensagens) {
+async function completarComLLM(systemPrompt, mensagens, deps = {}) {
+  const esperar = deps.esperar || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const agora = deps.agora || (() => Date.now());
+
   if (PROVIDERS.length === 0) {
     return null;
   }
@@ -132,7 +188,9 @@ async function completarComLLM(systemPrompt, mensagens) {
         console.error(`[${provider.name}]`, err.message);
 
         if (err.message.includes('RATE_LIMIT') && attempt === 0) {
-          await new Promise((r) => setTimeout(r, 2000));
+          registrarFalhaLLM(agora());
+          const esperaMs = err.retryAfterMs || RETRY_BACKOFF_MS;
+          await esperar(esperaMs);
         }
       }
     }
@@ -187,4 +245,10 @@ async function processWithLLM(userMessage, session) {
   return reply;
 }
 
-module.exports = { processWithLLM, completarComLLM, cleanToolMarkers };
+module.exports = {
+  processWithLLM,
+  completarComLLM,
+  cleanToolMarkers,
+  registrarFalhaLLM,
+  llmSaudavel,
+};

@@ -108,6 +108,60 @@ test('T4: retorna null quando a mensagem não é um pedido de atividade', async 
   assert.strictEqual(resposta, null);
 });
 
+// ── Segunda opinião (seam injetável) ───────────────────────────
+
+test('T4: heurística true não chama a segunda opinião', async () => {
+  let segundaChamada = 0;
+  const session = {
+    user: { cidade: 'Santo André', interesses: ['cultura'] },
+    history: [],
+  };
+  await processarPedidoDeAtividades('Quero atividades de cultura', session, {
+    recomendarBase: () => [atividadeBase('Oficina da Base')],
+    buscarWeb: async () => [],
+    segundaOpiniao: async () => { segundaChamada += 1; return true; },
+  });
+  assert.strictEqual(segundaChamada, 0, 'segunda opinião não deve rodar quando a heurística confirma');
+});
+
+test('T4: heurística false + segunda opinião true → pipeline roda', async () => {
+  let buscasWeb = 0;
+  let segundaChamada = 0;
+  const session = {
+    user: { cidade: 'Santo André', interesses: ['cultura'] },
+    history: [],
+  };
+  const resposta = await processarPedidoDeAtividades('Meu nome é Maria, me indica uma opção', session, {
+    recomendarBase: () => [atividadeBase('Oficina da Base')],
+    buscarWeb: async () => { buscasWeb += 1; return [resultadoWeb('Ateliê da Web')]; },
+    segundaOpiniao: async () => { segundaChamada += 1; return true; },
+  });
+  assert.strictEqual(segundaChamada, 1, 'segunda opinião deve ser consultada após a heurística falhar');
+  assert.strictEqual(buscasWeb, 1, 'a busca web deve rodar após a segunda opinião confirmar');
+  assert.ok(resposta.includes('Oficina da Base'), 'base deve aparecer');
+});
+
+test('T4: heurística false + segunda opinião false → retorna null', async () => {
+  let segundaChamada = 0;
+  const session = {
+    user: { cidade: 'Santo André', interesses: ['cultura'] },
+    history: [],
+  };
+  const resposta = await processarPedidoDeAtividades('Meu nome é Maria', session, {
+    recomendarBase: () => [atividadeBase('Oficina da Base')],
+    buscarWeb: async () => [],
+    segundaOpiniao: async () => { segundaChamada += 1; return false; },
+  });
+  assert.strictEqual(segundaChamada, 1, 'segunda opinião deve ser consultada');
+  assert.strictEqual(resposta, null, 'sem confirmação da segunda opinião não é pedido');
+});
+
+test('T4: sem segunda opinião injetada, comportamento atual é preservado', async () => {
+  const session = { user: null, history: [] };
+  const resposta = await processarPedidoDeAtividades('Meu nome é Maria', session);
+  assert.strictEqual(resposta, null, 'sem segunda opinião, heurística false → null como antes');
+});
+
 test('T4: busca web roda SEMPRE, mesmo com base suficiente', async () => {
   let buscasWeb = 0;
   const session = {

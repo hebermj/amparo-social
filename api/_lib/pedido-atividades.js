@@ -14,6 +14,7 @@ const { recomendarAtividades } = require('./activities');
 const { buscarPorTermo, montarTermoBusca, CIDADE_PADRAO } = require('./search');
 const { mensagemAtividades, mensagemSemAtividades } = require('./mensagens');
 const { curarResultados } = require('./curadoria');
+const { completarComLLM, llmSaudavel } = require('./llm');
 
 const PALAVRAS_DE_ATIVIDADE = [
   'atividade', 'atividades', 'evento', 'eventos', 'oficina', 'passeio',
@@ -129,6 +130,64 @@ function parecePedidoDeAtividades(texto) {
 }
 
 /**
+ * Segunda opinião da LLM: decide se a mensagem é um Pedido de
+ * Atividade quando a heurística falha. Só é chamada quando a LLM
+ * está saudável (folga de rate-limit); se não houver folga, responde
+ * false sem consumir nenhuma chamada LLM. A resposta da LLM é
+ * validada de forma estrita: apenas "SIM" explícito confirma.
+ *
+ * @param {string} texto — mensagem do Usuário
+ * @param {object} session — sessão (perfil para contexto)
+ * @param {object} [deps] — deps injetáveis para teste
+ * @param {Function} [deps.completar] — substituto de completarComLLM
+ * @param {Function} [deps.saudavel] — substituto de llmSaudavel
+ * @returns {Promise<boolean>}
+ */
+async function segundaOpiniaoPadrao(texto, session, deps = {}) {
+  const completar = deps.completar || completarComLLM;
+  const saudavel = deps.saudavel || llmSaudavel;
+
+  if (!saudavel()) return false;
+
+  const user = session.user || {};
+  const interesses = (user.interesses || []).join(', ');
+  const prompt = [
+    'Você é o Amparo, assistente de bem-estar digital para pessoas idosas.',
+    'Decida se a mensagem do usuário é um PEDIDO DE ATIVIDADE: algo em que ele',
+    'pergunta o que fazer, pede atividades/eventos/oficinas, ou refina uma',
+    'recomendação anterior (ex.: "algo mais perto de casa", "outra opção").',
+    '',
+    `Usuário: ${user.nome || '—'} (${user.cidade || ''}${user.bairro ? `, bairro ${user.bairro}` : ''})`,
+    `Interesses: ${interesses || '—'}`,
+    '',
+    'Responda APENAS com a palavra SIM ou NAO.',
+    '',
+    `Mensagem: "${texto}"`,
+    '',
+    'Resposta:',
+  ].join('\n');
+
+  let resposta = null;
+  try {
+    resposta = await completar(prompt, []);
+  } catch (err) {
+    console.error('[SEGUNDA OPINIÃO] Falha técnica:', err.message);
+    return false;
+  }
+
+  return parseDecisaoPedido(resposta);
+}
+
+/**
+ * Valida a resposta da LLM para a segunda opinião. Retorna true
+ * apenas para "SIM" explícito (caixa alta/baixa, espaços); qualquer
+ * outra resposta (NAO, texto livre) vale false — nunca confirma.
+ */
+function parseDecisaoPedido(texto) {
+  return String(texto || '').trim().toLowerCase() === 'sim';
+}
+
+/**
  * Termo de busca padrão: mescla o termo específico do pedido com os
  * interesses do perfil, a cidade (ou CIDADE_PADRAO) e o público idoso.
  */
@@ -176,6 +235,8 @@ function recomendarDaBase(recomendarBase, cidade, bairro, interesses) {
  * @param {object} session — sessão persistida (histórico, perfil e proteções)
  * @param {object} [deps] — dependências injetáveis para teste
  * @param {Function} [deps.detectarPedido] — heurística de detecção
+ * @param {Function} [deps.segundaOpiniao] — detector adicional consultado
+ *   quando a heurística falhar (default: ausente → comportamento atual)
  * @param {Function} [deps.montarTermo] — construtor do termo de busca
  * @param {Function} [deps.recomendarBase] — recomenda da Base local
  * @param {Function} [deps.buscarWeb] — busca na web (SearXNG)
@@ -186,13 +247,18 @@ function recomendarDaBase(recomendarBase, cidade, bairro, interesses) {
  */
 async function processarPedidoDeAtividades(texto, session, deps = {}) {
   const detectarPedido = deps.detectarPedido || parecePedidoDeAtividades;
+  const segundaOpiniao = deps.segundaOpiniao || null;
   const montarTermo = deps.montarTermo || montarTermoPadrao;
   const recomendarBase = deps.recomendarBase || recomendarAtividades;
   const buscarWeb = deps.buscarWeb || ((termo) => buscarPorTermo(termo));
   const curar = deps.curar || curarResultados;
   const agora = deps.agora || (() => Date.now());
 
-  if (!detectarPedido(texto)) return null;
+  if (!detectarPedido(texto)) {
+    if (!segundaOpiniao || !(await segundaOpiniao(texto, session))) {
+      return null;
+    }
+  }
 
   session.busca = session.busca || { cache: {}, hits: [] };
   const agoraTs = agora();
@@ -274,6 +340,8 @@ async function processarPedidoDeAtividades(texto, session, deps = {}) {
 module.exports = {
   processarPedidoDeAtividades,
   parecePedidoDeAtividades,
+  segundaOpiniaoPadrao,
+  parseDecisaoPedido,
   montarTermoPadrao,
   normalizarTermo,
   obterDoCache,
