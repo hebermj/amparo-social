@@ -18,7 +18,11 @@ if (DATABASE_URL) {
   pool = new Pool({
     connectionString: DATABASE_URL,
     max: POOL_MAX,
-    idleTimeoutMillis: 0,
+    // Em lambda (Vercel), o pool com idleTimeoutMillis: 0 mantém a conexão
+    // aberta e o event loop vivo — a função estoura o limite de 30s e o
+    // request nunca responde. Fechar o cliente ocioso em ~1s deixa a lambda
+    // encerrar logo após a última consulta.
+    idleTimeoutMillis: 1000,
   });
 }
 

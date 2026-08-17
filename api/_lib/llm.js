@@ -74,7 +74,7 @@ if (process.env.OPENROUTER_API_KEY) {
     name: 'openrouter',
     apiKey: process.env.OPENROUTER_API_KEY,
     url: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
+    model: 'z-ai/glm-5.2:free',
   });
 }
 
