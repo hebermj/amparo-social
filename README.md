@@ -15,8 +15,8 @@ baseadas no perfil de cada usuário e incentiva a participação social.
 |--------|-----------|
 | **Cadastro e perfil** | Nome → Cidade → Bairro → Interesses, salvos por usuário |
 | **Recomendação de atividades** | Filtra a base local por cidade, bairro e interesses |
-| **Busca na web** | Pesquisa atividades reais (SearXNG → Bing) quando a base local não atende |
-| **Memória persistente** | Perfil e histórico de cada usuário salvos no banco |
+| **Busca sempre + Curadoria da IA** | Em todo Pedido de Atividade, busca na web (SearXNG) e cura pela IA |
+| **Memória persistente** | Perfil, histórico e proteções de cada usuário salvos no banco |
 
 ---
 
@@ -28,14 +28,18 @@ Usuário (Telegram)
    ▼
 Webhook (Vercel Serverless — api/webhook.js)
    │
-   ├── Comandos diretos: /start, /atividades
+   ├── Comandos diretos: /start
+   │
+   ├── Pedido de Atividade (detecção por heurística, sem depender da IA)
+   │    └── orquestrador: busca sempre (SearXNG) + Base + Curadoria da IA
+   │        └── cache 1h + rate-limit 10/h (session.busca)
    │
    └── IA (api/_lib/llm.js)
          OpenCode Zen → OpenRouter (fallback)
          │
          ▼
       Resposta crua com marcadores de ferramenta
-      [[PERFIL:...]] [[RECOMENDAR:...]] [[BUSCAR:...]]
+      [[PERFIL:...]] [[HORARIO:...]]
          │
          ▼
       Webhook executa a ferramenta e envia o texto limpo
@@ -50,8 +54,10 @@ texto amigável para o idoso.
 | Marcador | Ação |
 |----------|------|
 | `[[PERFIL:nome:cidade:bairro:interesses]]` | Salva o cadastro do usuário |
-| `[[RECOMENDAR:bairro:interesse1,interesse2]]` | Recomenda da base local |
-| `[[BUSCAR:termo]]` | Pesquisa atividades na web |
+| `[[HORARIO:hh:mm]]` | Define o horário preferido de lembretes |
+
+> Os marcadores `[[RECOMENDAR:]]` e `[[BUSCAR:]]` foram **aposentados**: o
+> Pedido de Atividade é detectado por heurística e não depende da LLM (ADR-0005).
 
 ---
 
@@ -65,7 +71,9 @@ api/
     ├── llm.js          → Gateway LLM com fallback entre provedores
     ├── prompt.js       → System prompt dinâmico (persona Amparo)
     ├── activities.js   → Base local de atividades (JSON por cidade)
-    ├── search.js       → Busca web (SearXNG + Bing)
+    ├── search.js       → Busca web (SearXNG)
+    ├── curadoria.js    → Curadoria da IA (curarResultados)
+    ├── pedido-atividades.js → Orquestrador (busca sempre + cache + rate-limit)
     └── telegram.js     → Helpers da Telegram Bot API
 
 data/
@@ -104,10 +112,9 @@ OPENROUTER_API_KEY=
 # Recomendado — memória persistente por usuário (PostgreSQL)
 DATABASE_URL=postgresql://user:***@host:5432/amparo_social
 
-# Opcional — busca web (pelo menos um)
+# Opcional — busca web (instância SearXNG própria ou comunitária)
 SEARXNG_URL=
 SEARXNG_API_KEY=
-BING_API_KEY=
 
 # Opcional — cidade padrão para novos usuários
 CIDADE_PADRAO=Santo André

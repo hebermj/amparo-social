@@ -1,205 +1,125 @@
-# Plano: Módulo de Pesquisa Web para Atividades
+# Plano: Módulo de Busca Web para Atividades
+
+> **Status: implementado** — descreve o pipeline **Busca sempre + Curadoria da IA**
+> entregue nos tickets T1–T3 (spec #9). Substitui o plano original que previa
+> fallback via Bing API e marcador `[[BUSCAR:]]` — ambos removidos (ver ADR-0005).
 
 ## 1. Objetivo
 
-Quando a base local de atividades (`atividades-santo-andre.json`) não tiver opções suficientes, 
-ou quando o idoso pedir algo muito específico, o sistema deve **pesquisar na internet** por 
-atividades reais em Santo André e arredores, trazendo resultados frescos e variados.
-
----
+Quando o usuário faz um **Pedido de Atividade**, o sistema **sempre** busca na
+internet por atividades reais em Santo André e arredores (via SearXNG próprio ou
+comunitário), mescla com a Base de Atividades local, passa pela **Curadoria da IA**
+e entrega uma mensagem final em linguagem simples — sem URLs cruas, sem emojis e
+com rótulo de fonte. O caminho de atividade **não depende da LLM de chat**: a
+detecção é por heurística no webhook, então funciona mesmo sob rate-limit da IA.
 
 ## 2. Fluxo de Decisão
 
 ```
-Usuário pergunta sobre atividades
+Usuário faz Pedido de Atividade ("/atividades" ou mensagem detectada)
          │
          ▼
-   Base local (atividades-santo-andre.json)
+   Heurística: parecePedidoDeAtividades(texto)
          │
-         ├── achou 3+ atividades? → exibe normalmente
+         ▼
+   Orquestrador processarPedidoDeAtividades(texto, sessão)
          │
-         └── achou < 3 ou usuário pediu algo específico?
-                      │
-                      ▼
-         🔍 Módulo de Pesquisa Web
-                      │
-                      ▼
-         Resultados brutos da busca
-                      │
-                      ▼
-         LLM filtra e adapta os resultados
-         para linguagem simples e amigável
-                      │
-                      ▼
-         Exibe para o idoso
+         ├── Cache-hit (1h, por termo normalizado)?
+         │     → template direto (pula busca web E curadoria; não conta hit)
+         │
+         ├── Rate-limit 10 buscas/hora atingido?
+         │     → Base curada (curadoria só com a Base; sem Busca Web)
+         │
+         └── Folga
+               ├── 1. Base de Atividades (amplia bairros se necessário)
+               ├── 2. Busca Web SEMPRE (SearXNG) + registra hit + cache
+               ├── 3. Fusão base+web com origem marcada (top 5 web)
+               ├── 4. Curadoria da IA (curarResultados) — prefere a Base
+               │        └── falha/saída inválida → template tolerante
+               └── 5. Pedido+resposta no histórico
 ```
 
 ### Exemplo
 
-**Idoso:** "Tem alguma oficina de cerâmica perto de casa?"  
-**Base local:** 0 resultados  
-**Pesquisa Web:** "oficina cerâmica Santo André idosos"  
-**Resultado:** "Ateliê de Cerâmica Vila Floresta — Rua das Flores, 120 — quartas 14h"  
-**IA exibe:** *"Sra. Maria, encontrei um ateliê de cerâmica pertinho da senhora! 🎨 Fica na Rua das Flores, 120, toda quarta às 14h. Que tal?"*
+**Usuário:** "Tem alguma oficina de cerâmica perto de casa?"
+**Detecção:** heurística (palavra "oficina")
+**Termo:** "cerâmica Santo André idosos atividades" (mensagem + perfil + cidade)
+**Resultados:** Base (Sesc) + Ateliê da Web (SearXNG)
+**Curadoria:** seleciona e escreve a mensagem final, sem URLs cruas, com fonte
 
----
+## 3. API de Busca — Sem Chave
 
-## 3. API de Busca — Opções Grátis
+| Provedor | Limite | Português | Chave necessária? |
+|----------|--------|-----------|-------------------|
+| **SearXNG** (próprio) | Controlado pelo operador | Bom | Não (autenticação opcional) |
+| **SearXNG** (comunitário) | Variável | Bom | Não |
 
-| API | Limite Grátis | Português | Chave necessária? |
-|-----|---------------|-----------|-------------------|
-| **Bing Web Search** (Azure) | 1.000 chamadas/mês | ✅ Ótimo | ✅ Sim (grátis) |
-| **SerpAPI** | 100 buscas/mês | ✅ Bom | ✅ Sim (grátis) |
-| **Perplexity Sonar Free** | 5 chamadas/min (via API) | ✅ Bom | ✅ Já temos! |
-| **DuckDuckGo Lite** | Ilimitado | ✅ Razoável | ❌ Não precisa |
-
-### Recomendação: **Bing Search API** 🏆
-
-| Motivo | Detalhe |
-|--------|---------|
-| Limite generoso | 1.000 chamadas/mês grátis |
-| Língua portuguesa | Excelente para Brasil |
-| Resultados estruturados | Retorna nome, endereço, descrição |
-| Fácil integração | API REST simples (1 endpoint) |
-
----
+> O Bing Web Search foi **removido** (commit `19171ba`) em favor de instâncias
+> SearXNG. Não há chave obrigatória e não há fallback para um segundo provedor:
+> se o SearXNG falhar, o fluxo segue só com a Base de Atividades.
 
 ## 4. Estrutura do Módulo
 
 ```
 api/_lib/
-├── search.js            ← NOVO Módulo de pesquisa web
-│   └── buscarAtividades(termo, cidade)
-│       └── faz a chamada para Bing API
-│       └── retorna array de resultados padronizados
+├── pedido-atividades.js   ← Orquestrador (seam único com deps injetáveis)
+│   ├── parecePedidoDeAtividades(texto)        → heurística de detecção
+│   ├── processarPedidoDeAtividades(texto, sessão)
+│   │     ├── cache 1h (session.busca.cache)
+│   │     ├── rate-limit 10/h (session.busca.hits)
+│   │     ├── mescla Base + top 5 web (origem marcada)
+│   │     └── curarResultados → fallback template
+│   └── montarTermoPadrao(texto, sessão)       → termo mensagem+perfil+cidade
 │
-├── activities.js        ← (MODIFICADO)
-│   └── recomendarAtividades(bairro, interesses)
-│       ├── consulta base local
-│       └── se < 3 resultados → chama search.buscarAtividades()
+├── search.js              ← Busca web SearXNG
+│   ├── buscarPorTermo(termo)                  → resultados normalizados
+│   └── montarTermoBusca(mensagem, interesses, cidade)
 │
-└── llm.js               ← (MODIFICADO)
-    └── NOVO marcador: [[BUSCAR:interesses]]
-        └── webhook.js executa e retorna via activities.js
+├── curadoria.js           ← Curadoria da IA (T2)
+│   ├── curarResultados(itens, sessão)         → única chamada LLM do caminho
+│   └── validarCuradoria(resposta, itens)      → vazio/URL/emoji/parágrafo/atividade
+│
+├── activities.js          ← Base de Atividades local (recomendarAtividades)
+├── mensagens.js           ← Templates (mensagemAtividades tolerante, sem URLs)
+└── llm.js                 ← Gateway LLM (completarComLLM reusado pela curadoria)
 ```
 
-### Contrato da API interna
+## 5. Proteções de Sessão (T3)
 
-```javascript
-// api/_lib/search.js
+`session.busca = { cache: { termo: { ts, resultados } }, hits: [timestamps] }`
 
-async function buscarAtividades(termo, cidade = 'Santo André') {
-  // Exemplo de retorno:
-  return [
-    {
-      nome: 'Oficina de Cerâmica',
-      descricao: 'Aulas de cerâmica para iniciantes',
-      endereco: 'Rua das Flores, 120 — Santo André',
-      data_hora: 'quartas, 14h',
-      link: 'https://...'
-    }
-  ];
-}
-```
+- **Cache 1h** por termo normalizado (caixa/acentos), mapa de ~3 termos com
+  eviction por idade > 60 min. Em cache-hit, a mensagem sai pelo **template direto**
+  (pula busca web e curadoria) e **não** conta para o rate-limit.
+- **Rate-limit 10/h** em janela de 60 min corridos, contando só buscas explícitas
+  (`/atividades` e Pedidos de Atividade detectados compartilham o contador). No
+  estouro, o fluxo cai para a **Base curada**; o template só aparece se a própria
+  curadoria falhar.
+- Cache e hits persistem via `saveSession`, sobrevivendo a cold start quando há
+  `DATABASE_URL`.
 
-### Exemplo de chamada Bing API
+## 6. Curadoria da IA (T2)
 
-```http
-GET https://api.bing.microsoft.com/v7.0/search
-  ?q=oficina+cerâmica+Santo+André+idosos+gratuito
-  &count=5
-  &mkt=pt-BR
-  
-Headers:
-  Ocp-Apim-Subscription-Key: SUA_CHAVE
-```
-
-Resposta da Bing inclui:
-- `webPages.value[].name` — título
-- `webPages.value[].snippet` — descrição
-- `webPages.value[].url` — link
-
----
-
-## 5. Integração com o Prompt da IA
-
-Novo marcador de ferramenta a ser adicionado ao `prompt.js`:
-
-```
-## buscar_online
-USE quando: usuário pedir algo específico não encontrado na base local
-FORMATO: [[BUSCAR:termo de busca]]
-
-EXEMPLO:
-USUÁRIO: Tem aula de cerâmica?
-AMPARO: [[BUSCAR:aula cerâmica Santo André idosos]]
-Vou pesquisar! Deixa eu ver o que encontro...
-```
-
----
-
-## 6. Tratamento dos Resultados
-
-A LLM recebe os resultados brutos da busca e:
-
-1. **Seleciona** os mais relevantes para o perfil do idoso
-2. **Traduz** para linguagem simples, sem links quebrados
-3. **Formata** com endereço, dia/horário, e frase de incentivo
-4. **Mantém no máximo 2 parágrafos** (regra do prompt)
-
-### Exemplo de fluxo completo
-
-```
-USUÁRIO: Quero aprender pintura
-      ↓
-LLM detecta: interesse novo = "pintura"
-      ↓
-Base local: 0 resultados para "pintura"
-      ↓
-[[BUSCAR:oficina pintura Santo André terceira idade]]
-      ↓
-Webhook: chama search.buscarAtividades('oficina pintura Santo André idosos')
-      ↓
-Resultados:
-  1. "Oficina de Pintura em Tela - Sesc Santo André"
-  2. "Ateliê Livre - Praça do Carmo"
-      ↓
-LLM adapta:
-  "Sra. Maria, encontrei duas opções de pintura!
-   1️⃣ Sesc Santo André (Rua Tamarutaca, 302) — quintas 14h
-   2️⃣ Praça do Carmo — sábados 9h (ao ar livre)
-   Qual mais te agrada? 🎨"
-```
-
----
+A LLM (via `completarComLLM`, mesmo gateway do chat) recebe a fusão Base + web
+com campo `origem` (`base`|`web`) e é instruída a **preferir a Base** quando
+relevante. Regras da resposta: máx. 2 parágrafos, zero emojis, sem URLs cruas,
+rótulo de fonte para itens da web. A saída é validada; se falhar/vier vazia/
+contiver URL/emojis/mais de 2 parágrafos/sem nenhuma atividade, o orquestrador
+cai no template tolerante.
 
 ## 7. Limites e Segurança
 
-- **Cache:** Resultados da busca são armazenados na sessão por 1 hora (evita chamadas repetidas)
-- **Filtro de conteúdo:** Resultados passam pela LLM → só exibe atividades apropriadas para idosos
-- **Sem links diretos:** A LLM nunca envia URLs cruas para o idoso (pode ser golpe)
-- **Fallback:** Se a busca falhar (sem crédito, sem rede), cai no comportamento normal ("não encontrei")
-- **Rate limit:** No máximo 5 buscas por sessão, por hora
+- **Sem URLs cruas:** nem a curadoria (o prompt não recebe `link`) nem o template
+  expõem URLs ao usuário idoso — mitigação contra golpe.
+- **Resiliência:** o caminho de atividade funciona mesmo com a LLM de chat em
+  rate-limit (detecção por heurística + template).
+- **Custo:** 1 busca SearXNG por termo a cada 1h, no máx. 10/hora por sessão.
+- **Curadoria:** uma única chamada LLM por Pedido de Atividade.
 
----
+## 8. Status de Implementação
 
-## 8. Resumo do que precisa ser feito
-
-| # | Tarefa | Arquivo |
-|---|--------|---------|
-| 1 | Criar módulo `search.js` com chamada Bing API | `api/_lib/search.js` |
-| 2 | Adicionar `BUSCAR` ao `cleanToolMarkers` | `api/_lib/llm.js` |
-| 3 | Adicionar `BUSCAR` ao `parseTools` no webhook | `api/webhook.js` |
-| 4 | Implementar execução da busca no webhook | `api/webhook.js` |
-| 5 | Adicionar `[[BUSCAR:...]]` no system prompt | `api/_lib/prompt.js` |
-| 6 | Adicionar cache de resultados na sessão | `api/_lib/llm.js` |
-
-### Dependências
-
-- Criar conta no **Azure Bing Search** (gratuita) → obter chave
-- Adicionar `BING_SEARCH_API_KEY` nas env vars do Vercel
-- (Alternativa gratuita sem cadastro) DuckDuckGo Lite
-
----
-
-Quer que eu comece a implementar? Ou ajustar algo no plano? 😊
+| Ticket | Entregue em |
+|--------|-------------|
+| T1 — Detecção por heurística + orquestrador + busca sempre | `9cc4f42` |
+| T2 — Curadoria da IA (curarResultados) | `8351bf7` |
+| T3 — Cache 1h + rate-limit 10/h na Sessão | `4a4b4fa` |

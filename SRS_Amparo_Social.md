@@ -20,7 +20,7 @@ O Amparo é um assistente conversacional acessado via Telegram que recomenda ati
 
 - Cadastro e perfil do usuário (nome, cidade, bairro, interesses)
 - Recomendação personalizada de atividades sociais e comunitárias
-- Busca Web como camada de resiliência da base local
+- Busca sempre + Curadoria da IA (Busca Web em todo Pedido de Atividade, com curadoria)
 - Lembretes proativos via Telegram (V1.1)
 - IA Proativa que identifica inatividade e incentiva participação social (V1.1)
 - Conversação por texto (áudio previsto para V2)
@@ -73,7 +73,7 @@ O Amparo é um sistema conversacional **standalone** utilizando o Telegram como 
 
 - **Telegram Bot API** — envio e recebimento de mensagens
 - **LLM (Large Language Model)** — processamento de linguagem natural e geração de respostas
-- **Busca Web** — consulta em tempo real (SearXNG → Bing) quando a base local não atende
+- **Busca Web** — consulta em tempo real (SearXNG próprio ou comunitário) acionada em todo Pedido de Atividade
 
 O sistema não substitui relações humanas, mas atua como um **facilitador** que conecta o idoso à sua comunidade.
 
@@ -81,7 +81,7 @@ O sistema não substitui relações humanas, mas atua como um **facilitador** qu
 
 1. **Cadastro e Perfil** — registrar nome, cidade, bairro e interesses do usuário
 2. **Recomendação Personalizada** — sugerir atividades sociais, culturais e físicas com base no perfil
-3. **Busca Web** — pesquisar atividades reais quando a base local não atende
+3. **Busca Web** — pesquisar atividades reais e curadas pela IA em todo Pedido de Atividade
 4. **Lembretes Proativos** — enviar notificações sobre eventos e compromissos no horário configurado
 5. **IA Proativa** — detectar inatividade e enviar incentivos personalizados
 6. **Conversação Natural** — interação por texto em linguagem simples (áudio em V2)
@@ -132,7 +132,7 @@ O sistema não substitui relações humanas, mas atua como um **facilitador** qu
 | RF-007 | O sistema deve recomendar atividades comunitárias com base na cidade, bairro e interesses do usuário | 🔴 Alta |
 | RF-008 | O sistema deve manter uma base de dados de atividades locais (Sesc, prefeituras, centros comunitários, bibliotecas, UBS) | 🔴 Alta |
 | RF-009 | O sistema deve exibir para cada atividade: nome, data/horário, endereço, descrição e tipo | 🔴 Alta |
-| RF-010-EC | Quando a base local não atender o pedido, o sistema deve buscar atividades na web automaticamente (fallback) | 🔴 Alta |
+| RF-010 | Quando o usuário fizer um Pedido de Atividade, o sistema deve buscar atividades na web sempre (SearXNG), mesclando com a Base de Atividades e curando pela IA | 🔴 Alta |
 | RF-011-F | O sistema deve permitir que o usuário confirme interesse em uma atividade | 🟡 Média |
 | RF-012-F | O sistema deve agrupar recomendações por categoria (cultura, saúde, lazer, educação, voluntariado) | 🟡 Média |
 | RF-013-F | O sistema deve oferecer ajuda com inscrição na atividade quando solicitado | 🟡 Média |
@@ -252,9 +252,10 @@ O sistema não substitui relações humanas, mas atua como um **facilitador** qu
 │  └────────┬─────────────────────────────────────────────┘    │
 │           │                                                  │
 │  ┌────────┴─────────────────────────────────────────────┐    │
-│  │         Activity Engine / Recommender                │    │
-│  │  Consulta base → filtra por cidade/bairro/interesses │    │
-│  │  → fallback para Busca Web quando necessário         │    │
+│  │         Pedido de Atividade (pedido-atividades.js)    │    │
+│  │  Detecção por heurística → Busca SEMPRE (SearXNG)     │    │
+│  │  mescla com a Base + Curadoria da IA (curarResultados)│    │
+│  │  Cache 1h e rate-limit 10/h (session.busca)           │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -263,10 +264,10 @@ O sistema não substitui relações humanas, mas atua como um **facilitador** qu
               │                         │
      ┌────────┴────────┐     ┌──────────┴──────────┐
      │   PostgreSQL    │     │     Busca Web        │
-     │  (sessions:     │     │  SearXNG → Bing      │
-     │   perfil +      │     │  (fallback da base   │
-     │   histórico)    │     │   local)             │
-     └─────────────────┘     └─────────────────────┘
+     │  (sessions:     │     │  SearXNG (próprio ou │
+     │   perfil +      │     │  comunitário)        │
+     │   histórico)    │     └─────────────────────┘
+     └─────────────────┘
 ```
 
 ### 5.2 Fluxo de Interação Principal
@@ -397,8 +398,7 @@ Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), ca
 
 | Provedor | Endpoint | Autenticação | Uso |
 |----------|----------|-------------|-----|
-| SearXNG (primário) | `GET {SEARXNG_URL}/search?q=...&format=json` | Bearer (se configurado) | Busca em tempo real |
-| Bing (fallback) | `GET https://api.bing.microsoft.com/v7.0/search` | `Ocp-Apim-Subscription-Key` | Fallback quando SearXNG falha |
+| SearXNG (próprio ou comunitário) | `GET {SEARXNG_URL}/search?q=...&format=json` | Bearer (se configurado) | Busca em tempo real em todo Pedido de Atividade |
 
 ### 7.4 Interface com Telegram Bot API
 
@@ -418,7 +418,7 @@ Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), ca
 | **Cadastro** | Nome, cidade, bairro, interesses | 🔴 Implementado |
 | **Conversação** | Texto, histórico de sessão, resposta em linguagem simples | 🔴 Implementado |
 | **Recomendação** | Base curada, filtro por cidade/bairro/interesses | 🔴 Implementado |
-| **Busca Web** | Fallback automático quando a base local não atende | 🟡 V1.1 (em construção) |
+| **Busca Web** | Busca sempre + Curadoria da IA (SearXNG), com cache 1h e rate-limit 10/h | 🔴 Implementado |
 | **Lembretes** | Notificações de atividades no horário configurado | 🟡 V1.1 (em construção) |
 | **IA Proativa** | Incentivo após 3+ dias de inatividade | 🟡 V1.1 (em construção) |
 
@@ -440,7 +440,7 @@ Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), ca
 |--------|----------|------|
 | C-01 | Usuário completa cadastro em até 5 interações pelo Telegram | Funcional |
 | C-02 | Sistema recomenda ao menos 3 atividades relevantes para o perfil do usuário | Funcional |
-| C-03 | Quando a base local não atende, o sistema busca atividades na web e apresenta resultados | Funcional |
+| C-03 | Em todo Pedido de Atividade, o sistema busca na web (SearXNG), mescla com a Base, cura pela IA e apresenta resultados sem URLs cruas | Funcional |
 | C-04 | Lembretes são enviados no horário configurado pelo usuário | Funcional |
 | C-05 | Sistema envia mensagem de incentivo após 3+ dias de inatividade | Funcional |
 | C-06 | Sistema responde 95% das mensagens em até 10 segundos | Desempenho |
@@ -457,14 +457,15 @@ Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), ca
 V1 ─ MVP (entregue — Julho 2026)
   ├── Cadastro + Perfil (nome, cidade, bairro, interesses)
   ├── Recomendação de atividades (base curada)
-  ├── Busca Web manual (marcador [[BUSCAR:]])
   ├── Conversação texto (LLM com fallback)
   └── Telegram como canal único
 
 V1.1 ─ Fechar gaps (até fim de Agosto 2026)
   ├── Lembretes proativos (Vercel Cron)
   ├── IA Proativa (incentivo por inatividade)
-  ├── Fallback automático recomendação → Busca Web
+  ├── Busca sempre + Curadoria da IA (Busca Web em todo Pedido de
+  │   Atividade; detecção por heurística; curadoria curarResultados;
+  │   cache 1h + rate-limit 10/h na Sessão)
   └── Preferência de horário de notificações
 
 V2 ─ IA Personalizada (Setembro 2026)
@@ -508,7 +509,7 @@ V4 ─ Escala
 | Atividade | Evento comunitário curado (oficina, curso, grupo, serviço) |
 | Bairro | Divisão geográfica usada para filtrar atividades locais |
 | Base de Atividades | Catálogo curado por cidade (`data/atividades-<cidade>.json`) |
-| Busca Web | Consulta em tempo real (SearXNG → Bing) usada quando a base local não atende |
+| Busca Web | Consulta em tempo real (SearXNG próprio ou comunitário) acionada em todo Pedido de Atividade; os Resultados da Busca passam pela Curadoria da IA antes de virar Recomendação |
 | Envelhecimento Ativo | Conceito da OMS: processo de otimizar oportunidades de saúde, participação e segurança |
 | IA Proativa | Comportamento do sistema de iniciar conversa quando detecta inatividade |
 | Isolamento Social | Ausência de contato ou interação com a comunidade |
@@ -578,8 +579,9 @@ caloroso e respeitoso, como um neto ou neta que ajuda com carinho.
 ## Engajamento e IA Proativa
 16. Se o usuário sumir por 3+ dias sem interagir, envie uma mensagem curta e acolhedora:
     "Saudades, sra. Maria! 🌻 Como estão as coisas? Quer ver as atividades da semana?"
-17. Ao responder sobre atividades, prefira recomendar da base local; se o usuário 
-    pedir algo que a base não tem, use a ferramenta de busca.
+17. Ao responder sobre atividades, prefira os itens da base local quando forem
+    relevantes; se o usuário fizer um Pedido de Atividade, o sistema busca na web
+    automaticamente (o caminho de atividade não depende de marcador da LLM).
 
 ## Tratamento de Erros
 18. Se não entender a mensagem, peça desculpas e peça para repetir de forma mais simples
@@ -622,9 +624,8 @@ detectar a intenção correta:
 
 | Intenção | Ferramenta | Descrição |
 |----------|-----------|-----------|
-| Usuário quer ver atividades | `recomendar_atividades(cidade, bairro, interesses)` | Retorna lista de atividades filtradas; se a base local não atender, faz busca na web |
+| Usuário faz Pedido de Atividade | `processarPedidoDeAtividades(texto, sessão)` | Detecta por heurística, busca na web (SearXNG), mescla com a Base, cura pela IA e formata; cache 1h + rate-limit 10/h |
 | Usuário informa dados pessoais | `salvar_perfil(nome, cidade, bairro, interesses)` | Salva o cadastro do usuário |
-| Usuário pede algo que a base não tem | `buscar_online(termo)` | Pesquisa atividades na web (SearXNG → Bing) |
 ```
 
 ---
