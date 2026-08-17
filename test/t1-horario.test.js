@@ -38,6 +38,16 @@ test('T1: parseTools mantém PERFIL', () => {
   assert.strictEqual(perfil.nome, 'Alex');
 });
 
+test('T1: parseTools aceita PERFIL incremental com campos vazios', () => {
+  const tools = parseTools('[[PERFIL:Maria:::]] Que nome bonito!');
+  const perfil = tools.find((t) => t.type === 'perfil');
+  assert.ok(perfil, 'deve haver uma tool do tipo perfil');
+  assert.strictEqual(perfil.nome, 'Maria');
+  assert.strictEqual(perfil.cidade, '');
+  assert.strictEqual(perfil.bairro, '');
+  assert.deepStrictEqual(perfil.interesses, []);
+});
+
 test('T1: cleanToolMarkers remove apenas PERFIL/HORARIO', () => {
   const texto = cleanToolMarkers('[[PERFIL:Alex:São Paulo:Centro:pintura]] [[HORARIO:09:00]] Olá!');
   assert.strictEqual(texto, 'Olá!');

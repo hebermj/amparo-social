@@ -60,10 +60,23 @@ test('T6: fluxo de Horário de Lembretes é mantido com exemplo neutro', () => {
   );
 });
 
-test('T6: exemplos de diálogo usam primeiro nome (Alex)', () => {
+test('T6: exemplos de diálogo usam primeiro nome (Maria) e nunca "Alex"', () => {
   const prompt = buildPrompt({});
-  assert.match(prompt, /Alex/, 'exemplos devem usar o nome Alex');
+  assert.match(prompt, /Maria/, 'exemplos devem usar o nome Maria');
+  assert.doesNotMatch(prompt, /\bAlex\b/, 'exemplos não devem usar "Alex" (LLM repetia para usuário sem perfil)');
   assert.doesNotMatch(prompt, /sra\. Maria|sr\. Maria/i, 'exemplos não devem usar título');
+});
+
+test('T6: prompt proíbe inventar o nome do usuário', () => {
+  const prompt = buildPrompt({});
+  assert.match(prompt, /NUNCA invente|não souber o nome|Como posso chamar você/i,
+    'persona deve nunca adivinhar o nome do usuário');
+});
+
+test('T6: salvar_perfil é acionado incrementalmente a cada campo', () => {
+  const prompt = buildPrompt({});
+  assert.match(prompt, /a CADA campo coletado|ao menos um campo/i,
+    'salvar_perfil deve ser acionado incrementalmente');
 });
 
 test('T6: ferramentas de atividade foram aposentadas do prompt', () => {
