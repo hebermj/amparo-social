@@ -6,9 +6,6 @@ const {
   mensagemSemChaveIA,
   mensagemSemAtividades,
   mensagemAtividades,
-  mensagemBuscaPensando,
-  mensagemBuscaResultados,
-  mensagemBuscaVazia,
   mensagemLembrete,
   mensagemIncentivo,
 } = require('../api/_lib/mensagens.js');
@@ -28,9 +25,6 @@ test('T7: nenhuma mensagem de código contém emojis', () => {
     mensagemSemAtividades(),
     mensagemAtividades([atividade], 'base'),
     mensagemAtividades([atividade], 'web'),
-    mensagemBuscaPensando(),
-    mensagemBuscaResultados([atividade]),
-    mensagemBuscaVazia(),
     mensagemLembrete('Maria', atividade),
     mensagemIncentivo('Maria'),
     mensagemIncentivo(null),
@@ -58,17 +52,35 @@ test('T7: mensagemAtividades lista atividades numeradas por origem', () => {
   assert.match(web, /Encontrei atividades na internet para você/);
 });
 
-test('T7: mensagemBuscaResultados limita a 3 resultados', () => {
-  const muitos = [
-    { nome: 'A', descricao: 'Primeira atividade.' },
-    { nome: 'B', descricao: 'Segunda atividade.' },
-    { nome: 'C', descricao: 'Terceira atividade.' },
-    { nome: 'D', descricao: 'Quarta atividade.' },
+test('T7: mensagemAtividades tolera Resultados da Busca (descricao/fonte, sem URL crua)', () => {
+  const web = [
+    {
+      nome: 'Ateliê de Cerâmica',
+      descricao: 'Aulas de cerâmica para iniciantes na região central.',
+      fonte: 'searxng',
+      link: 'https://exemplo.com/atelie',
+    },
   ];
-  const msg = mensagemBuscaResultados(muitos);
+  const msg = mensagemAtividades(web, 'web');
+  assert.match(msg, /1\. \*Ateliê de Cerâmica\*/);
+  assert.match(msg, /Aulas de cerâmica para iniciantes/);
+  assert.match(msg, /Fonte: searxng/);
+  assert.doesNotMatch(msg, /exemplo\.com/, 'nunca expor URL crua');
+});
+
+test('T7: mensagemAtividades limita a 5 atividades', () => {
+  const muitos = [
+    { nome: 'A', endereco: 'Rua X, 1', data_hora: '2026-08-20T14:00:00' },
+    { nome: 'B', endereco: 'Rua X, 2', data_hora: '2026-08-20T15:00:00' },
+    { nome: 'C', endereco: 'Rua X, 3', data_hora: '2026-08-20T16:00:00' },
+    { nome: 'D', endereco: 'Rua X, 4', data_hora: '2026-08-20T17:00:00' },
+    { nome: 'E', endereco: 'Rua X, 5', data_hora: '2026-08-20T18:00:00' },
+    { nome: 'F', endereco: 'Rua X, 6', data_hora: '2026-08-20T19:00:00' },
+  ];
+  const msg = mensagemAtividades(muitos, 'base');
   assert.match(msg, /1\. \*A\*/);
-  assert.match(msg, /3\. \*C\*/);
-  assert.doesNotMatch(msg, /4\. \*D\*/);
+  assert.match(msg, /5\. \*E\*/);
+  assert.doesNotMatch(msg, /6\. \*F\*/);
 });
 
 test('T7: mensagemLembrete e mensagemIncentivo incluem o nome', () => {

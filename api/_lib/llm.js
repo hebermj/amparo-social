@@ -39,8 +39,6 @@ if (process.env.OPENROUTER_API_KEY) {
  */
 function cleanToolMarkers(text) {
   return text
-    .replace(/\[\[RECOMENDAR:[^\]]+\]\]\s*/g, '')
-    .replace(/\[\[BUSCAR:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[PERFIL:[^\]]+\]\]\s*/g, '')
     .replace(/\[\[HORARIO:[^\]]+\]\]\s*/g, '')
     .trim();

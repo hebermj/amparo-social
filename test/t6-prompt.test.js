@@ -65,3 +65,17 @@ test('T6: exemplos de diálogo usam primeiro nome (Alex)', () => {
   assert.match(prompt, /Alex/, 'exemplos devem usar o nome Alex');
   assert.doesNotMatch(prompt, /sra\. Maria|sr\. Maria/i, 'exemplos não devem usar título');
 });
+
+test('T6: ferramentas de atividade foram aposentadas do prompt', () => {
+  const prompt = buildPrompt({});
+  assert.doesNotMatch(prompt, /recomendar_atividades/, 'não deve haver recomendar_atividades');
+  assert.doesNotMatch(prompt, /buscar_online/, 'não deve haver buscar_online');
+  assert.doesNotMatch(prompt, /\[\[RECOMENDAR/, 'não deve haver marcador RECOMENDAR');
+  assert.doesNotMatch(prompt, /\[\[BUSCAR/, 'não deve haver marcador BUSCAR');
+});
+
+test('T6: perfil e horário seguem como ferramentas', () => {
+  const prompt = buildPrompt({});
+  assert.match(prompt, /\[\[PERFIL:/, 'marcador PERFIL deve permanecer');
+  assert.match(prompt, /\[\[HORARIO:/, 'marcador HORARIO deve permanecer');
+});

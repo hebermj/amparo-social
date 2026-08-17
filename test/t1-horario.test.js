@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const { parseTools } = require('../api/webhook.js');
+const { cleanToolMarkers } = require('../api/_lib/llm.js');
 const { buildPrompt } = require('../api/_lib/prompt.js');
 
 test('T1: parseTools extrai o horário do marcador [[HORARIO:hh:mm]]', () => {
@@ -21,6 +22,25 @@ test('T1: parseTools aceita horário sem zero à esquerda (ex.: 9:00)', () => {
 test('T1: parseTools rejeita horário inválido (ex.: 99:99)', () => {
   const tools = parseTools('[[HORARIO:99:99]]');
   assert.ok(!tools.some((t) => t.type === 'horario'), 'horário inválido não deve gerar tool');
+});
+
+test('T1: parseTools aposentou os marcadores RECOMENDAR/BUSCAR', () => {
+  const tools = parseTools('[[RECOMENDAR:Centro:cultura]] [[BUSCAR:aula cerâmica]] [[HORARIO:09:00]]');
+  assert.ok(!tools.some((t) => t.type === 'recomendar'), 'RECOMENDAR não deve gerar tool');
+  assert.ok(!tools.some((t) => t.type === 'buscar'), 'BUSCAR não deve gerar tool');
+  assert.ok(tools.some((t) => t.type === 'horario'), 'HORARIO continua funcionando');
+});
+
+test('T1: parseTools mantém PERFIL', () => {
+  const tools = parseTools('[[PERFIL:Alex:São Paulo:Centro:pintura,leitura]]');
+  const perfil = tools.find((t) => t.type === 'perfil');
+  assert.ok(perfil, 'deve haver uma tool do tipo perfil');
+  assert.strictEqual(perfil.nome, 'Alex');
+});
+
+test('T1: cleanToolMarkers remove apenas PERFIL/HORARIO', () => {
+  const texto = cleanToolMarkers('[[PERFIL:Alex:São Paulo:Centro:pintura]] [[HORARIO:09:00]] Olá!');
+  assert.strictEqual(texto, 'Olá!');
 });
 
 test('T1: buildPrompt instrui a coleta do horário preferido', () => {

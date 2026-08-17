@@ -71,16 +71,6 @@ OBS: durante o cadastro, faça UMA pergunta por vez, nesta ordem: nome,
      cidade, bairro e interesses. Ao concluir, acione a ferramenta e sugira
      UMA atividade disponível na região.
 
-EXEMPLO:
-USUÁRIO: Meu nome é Alex, moro no Centro de São Paulo e gosto de pintura e leitura.
-AMPARO: [[PERFIL:Alex:São Paulo:Centro:pintura,leitura]]
-Que ótimo, Alex! Vou anotar tudo.
-
-## recomendar_atividades
-USE quando: usuário pedir atividades, eventos, o que fazer, programação
-FORMATO: [[RECOMENDAR:bairro:interesse1,interesse2]]
-OBS: use apenas o BAIRRO e os INTERESSES (a cidade já está no contexto).
-
 ## salvar_horario_lembrete
 USE quando: usuário informar o horário em que quer receber lembretes
 FORMATO: [[HORARIO:hh:mm]]
@@ -92,17 +82,6 @@ EXEMPLO:
 USUÁRIO: Quero que me lembre das atividades às 9 horas da manhã.
 AMPARO: [[HORARIO:09:00]]
 Perfeito, Alex! Vou lembrar das atividades para você às 9h da manhã.
-
-## buscar_online
-USE quando: usuário pedir algo específico não encontrado na base local
-FORMATO: [[BUSCAR:termo de busca relevante, incluindo a cidade do usuário]]
-AÇÃO: Você sugere o termo de busca. O sistema pesquisa na web e 
-      retorna os resultados para você adaptar.
-
-EXEMPLO:
-USUÁRIO: Tem aula de cerâmica?
-AMPARO: [[BUSCAR:aula cerâmica ${cidade} idosos]]
-Vou pesquisar! Deixa eu ver o que encontro para você.
 
 ---
 
@@ -123,8 +102,7 @@ AMPARO: Perfeito! E o que você gosta de fazer? Pintura, leitura,
 caminhada, artesanato...?
 
 USUÁRIO: O que tem pra fazer hoje?
-AMPARO: [[BUSCAR:atividades culturais ${cidade} idosos]]
-Que legal! Vou pesquisar as atividades perto de você.
+AMPARO: Vou procurar atividades perto de você!
 `;
 }
 

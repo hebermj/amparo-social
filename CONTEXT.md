@@ -13,8 +13,12 @@ Pessoa idosa (60+) que interage com o Amparo pelo Telegram.
 _Avoid_: cliente, paciente, beneficiário
 
 **Bairro**:
-Divisão geográfica usada para filtrar atividades locais de um usuário.
+Divisão geográfica usada para filtrar atividades locais de um usuário. Na Busca Web, o bairro é um ponto de partida: se a região do usuário não atende, a busca amplia para outros bairros da cidade.
 _Avoid_: região, zona
+
+**Pedido de Atividade**:
+Mensagem do usuário em que ele pede atividades; detectada por heurística no webhook (não pela LLM), dispara a Busca Web + Curadoria da IA.
+_Avoid_: solicitação de atividade, pergunta de atividade
 
 **Interesse**:
 Preferência declarada do usuário (cultura, esporte, leitura, música, artesanato, voluntariado) usada na recomendação.
@@ -29,12 +33,20 @@ Catálogo curado de atividades por cidade (arquivos `data/atividades-<cidade>.js
 _Avoid_: banco de atividades, feed
 
 **Recomendação**:
-Lista de atividades filtrada por bairro e interesses do usuário, derivada da Base de Atividades.
+Lista de atividades filtrada por bairro e interesses do usuário, curada pela IA a partir da Base de Atividades e/ou de Resultados da Busca.
 _Avoid_: sugestão, dica
 
 **Busca Web**:
-Consulta em tempo real (SearXNG → Bing) usada quando a Base de Atividades não atende o pedido.
+Consulta em tempo real (SearXNG próprio ou comunitário) acionada sempre que o usuário pede atividades; os Resultados da Busca passam pela curadoria da IA antes de virar Recomendação.
 _Avoid_: pesquisa online, raspagem
+
+**Resultado da Busca**:
+Item não curado retornado pela Busca Web (nome, descrição, link, fonte), que precisa passar pela curadoria da IA antes de virar Recomendação.
+_Avoid_: achado, item de pesquisa, Atividade (antes de curado)
+
+**Curadoria da IA**:
+Passo em que a IA lê a fusão de Base de Atividades e Resultados da Busca, seleciona as relevantes para o usuário e escreve a mensagem final. Se falhar ou não puder rodar, o sistema cai no template.
+_Avoid_: formatação, segunda LLM, pós-processamento
 
 **Lembrete Proativo**:
 Mensagem enviada pelo sistema (não pelo usuário) em horário configurado, relembrando atividades.

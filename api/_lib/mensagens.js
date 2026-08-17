@@ -38,8 +38,11 @@ function mensagemSemAtividades() {
 }
 
 /**
- * Lista de atividades recomendadas (até 5), numerada e com data/endereço.
- * @param {object[]} atividades — atividades com nome, endereco, data_hora
+ * Lista de atividades recomendadas (até 5), numerada, tolerante a ambos
+ * os formatos: itens da Base (`endereco`/`data_hora`) e Resultados da
+ * Busca (`descricao`/`fonte`). Nunca expõe URLs cruas (link/url) — a
+ * fonte aparece apenas como rótulo amigável.
+ * @param {object[]} atividades — atividades com nome + endereco/data_hora e/ou descricao/fonte
  * @param {'base'|'web'} origem
  * @returns {string}
  */
@@ -53,40 +56,15 @@ function mensagemAtividades(atividades, origem) {
     resp += `${i + 1}. *${a.nome}*\n`;
     if (a.endereco) resp += `   Endereço: ${a.endereco}\n`;
     if (a.data_hora) resp += `   Quando: ${formatarDataHora(a.data_hora)}\n`;
+    if (a.descricao) {
+      const frase = a.descricao.split(/[.!?]/)[0].substring(0, 120);
+      resp += `   ${frase}.\n`;
+    }
+    if (a.fonte) resp += `   Fonte: ${a.fonte}\n`;
     resp += '\n';
   });
   resp += '_Qual te interessou? Me fala!_';
   return resp;
-}
-
-function mensagemBuscaPensando() {
-  return 'Vou pesquisar, só um instante...';
-}
-
-/**
- * Resultados da busca web (até 3), numerados e amigáveis.
- * @param {object[]} resultados — resultados com nome e descricao
- * @returns {string}
- */
-function mensagemBuscaResultados(resultados) {
-  const top3 = resultados.slice(0, 3);
-  let texto = 'Encontrei algumas atividades interessantes!\n\n';
-
-  top3.forEach((r, i) => {
-    texto += `${i + 1}. *${r.nome}*\n`;
-    if (r.descricao) {
-      const frase = r.descricao.split(/[.!?]/)[0].substring(0, 120);
-      texto += `   ${frase}.\n`;
-    }
-    texto += '\n';
-  });
-
-  texto += '_Qual te interessou? Me fala que eu ajudo com mais detalhes!_';
-  return texto;
-}
-
-function mensagemBuscaVazia() {
-  return 'Não encontrei atividades específicas para isso agora. Mas se quiser, posso tentar outro tipo de busca!';
 }
 
 /**
@@ -124,9 +102,6 @@ module.exports = {
   mensagemSemChaveIA,
   mensagemSemAtividades,
   mensagemAtividades,
-  mensagemBuscaPensando,
-  mensagemBuscaResultados,
-  mensagemBuscaVazia,
   mensagemLembrete,
   mensagemIncentivo,
 };

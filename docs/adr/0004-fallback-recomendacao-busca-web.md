@@ -1,3 +1,5 @@
 # Fallback automático da recomendação para a Busca Web
 
+> **Status: superseded by [ADR-0005](0005-sempre-buscar-curadoria-ia.md)** — a busca deixou de ser um *fallback* (acionada só quando a base tem < 3 resultados) e passou a rodar **sempre** em Pedido de Atividade, com curadoria pela IA. Ver ADR-0005.
+
 O README e o plano do módulo de busca descreviam um fluxo automático (base local sem resultados suficientes → busca web) que não existia no código — a busca só rodava via marcador explícito `[[BUSCAR:]]`. Decidimos implementar o fallback automático no V1.1: quando a base curada não atende o pedido (ex.: poucos resultados na região), o sistema dispara a Busca Web em vez de devolver lista vazia. Consequência: o usuário sempre recebe recomendações, com a busca web como camada de resiliência da Base de Atividades.

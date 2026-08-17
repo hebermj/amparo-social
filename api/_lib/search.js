@@ -115,9 +115,13 @@ async function buscarSearXNG(termo) {
 /**
  * Monta o termo de busca adicionando contexto de cidade e público,
  * sem duplicar palavras que já estão no termo original.
+ * O termo específico da mensagem (ex.: "cerâmica") é mesclado com os
+ * interesses do perfil; quando a mensagem não traz termo específico,
+ * usa apenas os interesses do perfil.
  */
-function montarTermoBusca(interesses, cidade = CIDADE_PADRAO) {
-  let base = interesses.join(' ').trim();
+function montarTermoBusca(mensagem, interesses = [], cidade = CIDADE_PADRAO) {
+  const especifico = extrairTermoDaMensagem(mensagem);
+  let base = [especifico, ...interesses].filter(Boolean).join(' ').trim();
   if (cidade && !base.toLowerCase().includes(cidade.toLowerCase())) {
     base += ` ${cidade}`;
   }
@@ -130,15 +134,36 @@ function montarTermoBusca(interesses, cidade = CIDADE_PADRAO) {
   return base.trim();
 }
 
+// Palavras genéricas de um pedido de atividade, removidas ao extrair o
+// termo específico (ex.: de "tem aula de cerâmica?" sobra "cerâmica").
+const PALAVRAS_GENERICAS = new Set([
+  'o', 'que', 'tem', 'ter', 'para', 'pra', 'de', 'da', 'do', 'na', 'no',
+  'alguma', 'algum', 'sugere', 'sugira', 'recomenda', 'recomende',
+  'atividade', 'atividades', 'evento', 'eventos', 'aula', 'aulas', 'curso',
+  'cursos', 'oficina', 'oficinas', 'vai', 'quero', 'gostaria',
+  'encontrar', 'procurar', 'hoje', 'essa', 'este', 'esta', 'região', 'bairro',
+  'fazer', 'saber', 'ver', 'como', 'pode', 'poderia', 'me', 'por', 'em',
+]);
+
 /**
- * Interface principal: busca atividades na web.
+ * Extrai o termo específico de um pedido de atividade.
+ * Ex.: "tem aula de cerâmica?" → "cerâmica". Retorna '' quando não há.
+ */
+function extrairTermoDaMensagem(mensagem) {
+  const palavras = String(mensagem || '')
+    .toLowerCase()
+    .split(/[^a-z0-9à-úçãõâêîôû]+/)
+    .filter((p) => p && !PALAVRAS_GENERICAS.has(p));
+  return palavras.join(' ');
+}
+
+/**
+ * Busca atividades na web por termo já montado.
  *
- * @param {string[]} interesses — Lista de interesses (ex: ["pintura", "arte"])
- * @param {string} [cidade] — Cidade para filtrar (default: CIDADE_PADRAO)
+ * @param {string} termo — termo de busca completo (ex.: "cerâmica Santo André idosos atividades")
  * @returns {Promise<object[]>} — Array de resultados normalizados
  */
-async function buscarAtividades(interesses, cidade = CIDADE_PADRAO) {
-  const termo = montarTermoBusca(interesses, cidade);
+async function buscarPorTermo(termo) {
   console.log(`[SEARCH] Buscando: "${termo}"`);
 
   // 1º: SearXNG (self-hosted ou comunidade)
@@ -158,4 +183,4 @@ async function buscarAtividades(interesses, cidade = CIDADE_PADRAO) {
   return [];
 }
 
-module.exports = { buscarAtividades };
+module.exports = { buscarPorTermo, montarTermoBusca, CIDADE_PADRAO };

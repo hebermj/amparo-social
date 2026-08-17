@@ -2,26 +2,20 @@
  * ── Webhook do Telegram (Vercel Serverless) ────────────────────
  * Recebe mensagens do Telegram, processa com IA e executa ferramentas.
  *
- * Fluxo de busca web:
- *   1. LLM retorna "[[BUSCAR:termo]] texto..."
- *   2. Sistema executa search.js com o termo
- *   3. Se achou resultados → nova chamada LLM para formatar
- *   4. Se não achou → usa o texto original (limpo dos marcadores)
+ * Fluxo de Pedido de Atividade (sem depender da LLM de chat):
+ *   1. Detecção por heurística no webhook
+ *   2. Orquestrador busca na web + mescla com a Base
+ *   3. Entrega recomendação formatada (ou template)
  */
 
 const { sendMessage } = require('./_lib/telegram');
 const { processWithLLM, cleanToolMarkers } = require('./_lib/llm');
 const { getSession, saveSession, listarSessoes } = require('./_lib/db');
-const { recomendarComFallback, recomendarAtividades } = require('./_lib/activities');
-const { buscarAtividades } = require('./_lib/search');
+const { recomendarAtividades } = require('./_lib/activities');
+const { processarPedidoDeAtividades } = require('./_lib/pedido-atividades');
 const { lembretesDevidos, atividadesFuturas, inativosDesde } = require('./_lib/proativo');
 const {
   mensagemStart,
-  mensagemSemAtividades,
-  mensagemAtividades,
-  mensagemBuscaPensando,
-  mensagemBuscaResultados,
-  mensagemBuscaVazia,
   mensagemLembrete,
   mensagemIncentivo,
 } = require('./_lib/mensagens');
@@ -53,26 +47,6 @@ function extractMessage(body) {
 function parseTools(reply) {
   const tools = [];
 
-  // [[RECOMENDAR:bairro:interesse1,interesse2]]
-  const rec = reply.match(/\[\[RECOMENDAR:([^\]]+)\]\]/);
-  if (rec) {
-    const [bairro, interessesStr] = rec[1].split(':');
-    tools.push({
-      type: 'recomendar',
-      bairro: (bairro || '').trim(),
-      interesses: interessesStr ? interessesStr.split(',').map((s) => s.trim()) : [],
-    });
-  }
-
-  // [[BUSCAR:termo de busca]]
-  const bus = reply.match(/\[\[BUSCAR:([^\]]+)\]\]/);
-  if (bus) {
-    tools.push({
-      type: 'buscar',
-      termo: bus[1].trim(),
-    });
-  }
-
   // [[PERFIL:nome:cidade:bairro:interesse1,interesse2]]
   const perfil = reply.match(/\[\[PERFIL:([^\]]+)\]\]/);
   if (perfil) {
@@ -99,38 +73,6 @@ function parseTools(reply) {
 }
 
 // ── Ferramentas ────────────────────────────────────────────────
-
-async function executarRecomendar(chatId, cidade, bairro, interesses) {
-  const { origem, atividades } = await recomendarComFallback(cidade, bairro, interesses);
-  if (atividades.length === 0) {
-    await sendMessage(chatId, mensagemSemAtividades());
-    return;
-  }
-  await sendMessage(chatId, mensagemAtividades(atividades, origem));
-}
-
-/**
- * Executa a busca web e retorna o texto adaptado para o usuário.
- * NUNCA lança exceção — sempre retorna texto ou null.
- */
-async function executarBusca(chatId, termo, session) {
-  try {
-    await sendMessage(chatId, mensagemBuscaPensando());
-
-    const resultados = await buscarAtividades([termo], session.user?.cidade);
-
-    if (resultados.length === 0) {
-      return null;
-    }
-
-    return mensagemBuscaResultados(resultados);
-
-  } catch (err) {
-    console.error('[BUSCA ERROR]', err.message);
-    // Se a busca falhar, usa o texto original da LLM (fallback)
-    return null;
-  }
-}
 
 // ── Lembretes Proativos (cron) ────────────────────────────────
 
@@ -268,9 +210,13 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'start' });
     }
 
-    if (text === '/atividades') {
+    // ── Pedido de Atividade (detecção por heurística, sem depender da IA) ──
+    // `/atividades` e mensagens detectadas entram no mesmo pipeline.
+    const respostaAtividade = await processarPedidoDeAtividades(text, session);
+    if (respostaAtividade !== null) {
       await saveSession(chatId, session);
-      return await executarRecomendar(chatId, session.user?.cidade, session.user?.bairro, session.user?.interesses);
+      await sendMessage(chatId, respostaAtividade);
+      return res.status(200).json({ status: 'atividade' });
     }
 
     // ── Processamento com IA ────────────────────────────────
@@ -302,25 +248,11 @@ module.exports = async (req, res) => {
           }
           break;
 
-        case 'recomendar':
-          await executarRecomendar(chatId, session.user?.cidade, tool.bairro, tool.interesses);
-          break;
-
         case 'horario':
           session.user = session.user || {};
           session.user.pref_horario = tool.horario;
           // A confirmação (ecoando o horário) vem do texto limpo da LLM
           break;
-
-        case 'buscar': {
-          const resultadoBusca = await executarBusca(chatId, tool.termo, session);
-          if (resultadoBusca) {
-            textoFinal = resultadoBusca;
-          } else {
-            textoFinal = mensagemBuscaVazia();
-          }
-          break;
-        }
       }
     }
 
