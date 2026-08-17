@@ -398,7 +398,7 @@ Catálogo curado em arquivos `data/atividades-<cidade>.json` (um por cidade), ca
 
 | Provedor | Endpoint | Autenticação | Uso |
 |----------|----------|-------------|-----|
-| SearXNG (próprio ou comunitário) | `GET {SEARXNG_URL}/search?q=...&format=json` | Bearer (se configurado) | Busca em tempo real em todo Pedido de Atividade |
+| Instância SearXNG Própria (único provedor, ADR-0006) | `GET {SEARXNG_URL}/search?q=...&format=json` | Basic (usuário/senha do Caddy) | Busca em tempo real em todo Pedido de Atividade; sem fallback comunitário |
 
 ### 7.4 Interface com Telegram Bot API
 

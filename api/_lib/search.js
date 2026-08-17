@@ -1,129 +1,103 @@
 /**
  * ── Módulo de Busca Web ─────────────────────────────────────────
- * Pesquisa atividades na internet usando SearXNG (primário e comunitário).
+ * Pesquisa atividades na internet consultando EXCLUSIVAMENTE a
+ * Instância SearXNG Própria (configurada via SEARXNG_URL), autenticada
+ * por credencial básica (SEARXNG_USER/SEARXNG_PASSWORD).
  *
- * Ordem de tentativa:
- *   1. SearXNG self-hosted (configurado via SEARXNG_URL)
- *   2. SearXNG comunitário — instâncias públicas que aceitam format=json
- *   3. Lista vazia (o fluxo segue só com a Base de Atividades)
+ * Não há fallback para instâncias comunitárias (ADR-0006): se a Instância
+ * falhar ou não houver SEARXNG_URL, retorna lista vazia — o fluxo segue
+ * só com a Base de Atividades.
  */
 
 const CIDADE_PADRAO = process.env.CIDADE_PADRAO || '';
 
-/* Instâncias públicas da SearXNG (instâncias comunitárias, sem chave API).
-   A lista default contém apenas instâncias verificadas que respondem
-   format=json com resultados (checadas em 2026-08). Pode ser sobrescrita
-   via SEARXNG_COMMUNITY_INSTANCES (separadas por vírgula).
- */
-const SEARXNG_COMMUNITY_INSTANCES_DEFAULT = [
-  'https://search.mectov.my.id',
-];
+// Scripts não-latinos (chinês, japonês, coreano, cirílico, etc.) cujos
+// Resultados são descartados como defesa em profundidade: o público do
+// Amparo fala português e a Instância pode devolver algo em outro idioma.
+const NAO_LATINO_RE = /[\u0370-\u1FFF\u2E80-\u9FFF\uAC00-\uD7AF\u3040-\u30FF\uF900-\uFAFF\uFE30-\uFE4F]/;
 
-function lerCommunityInstances() {
-  const custom = process.env.SEARXNG_COMMUNITY_INSTANCES;
-  if (custom) {
-    return custom.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-  return SEARXNG_COMMUNITY_INSTANCES_DEFAULT;
+/**
+ * Texto combinado de um Resultado (conteúdo ou trecho), para título+descrição.
+ */
+function textoDe(item) {
+  return item.content || item.snippet || '';
 }
 
 /**
- * Normaliza os resultados dos diferentes provedores para um formato único.
+ * Normaliza os Resultados da Instância para o formato único, descartando
+ * os que contenham scripts não-latinos no título ou na descrição.
  */
 function normalizarResultados(items, fonte) {
-  return items.map((item) => {
-    const desc = item.content || item.snippet || '';
-    // Remove trechos de navegação (breadcrumbs, etc)
-    const descLimpa = desc
-      .replace(/^.*?›\s*/g, '')
-      .replace(/\s*\d+\s*(min|h)\s*(atrás|ago).*$/i, '')
-      .trim();
+  return items
+    .filter((item) => {
+      const titulo = item.title || '';
+      return !NAO_LATINO_RE.test(`${titulo} ${textoDe(item)}`);
+    })
+    .map((item) => {
+      const desc = textoDe(item);
+      // Remove trechos de navegação (breadcrumbs, etc)
+      const descLimpa = desc
+        .replace(/^.*?›\s*/g, '')
+        .replace(/\s*\d+\s*(min|h)\s*(atrás|ago).*$/i, '')
+        .trim();
 
-    return {
-      nome: item.title?.replace(/ [|] .*$/, '').trim() || 'Atividade',
-      descricao: descLimpa.substring(0, 200),
-      link: item.url || '',
-      fonte,
-    };
-  });
+      return {
+        nome: item.title?.replace(/ [|] .*$/, '').trim() || 'Atividade',
+        descricao: descLimpa.substring(0, 200),
+        link: item.url || '',
+        fonte,
+      };
+    });
 }
 
 /**
- * Busca via SearXNG (self-hosted ou comunidade).
- * Tenta primeiro a URL configurada, depois instâncias públicas.
+ * Busca na Instância SearXNG Própria.
  * Endpoint: GET /search?q=...&format=json&language=pt-BR
+ * @returns {Promise<object[]|null>} — Resultados normalizados, ou null
+ * quando a Instância está indisponível/não configurada.
  */
 async function buscarSearXNG(termo) {
   const SEARXNG_URL = process.env.SEARXNG_URL;
-  const SEARXNG_API_KEY = process.env.SEARXNG_API_KEY;
-  const instances = lerCommunityInstances();
+  const user = process.env.SEARXNG_USER;
+  const senha = process.env.SEARXNG_PASSWORD;
 
-  // 1º: Tenta a URL self-hosted configurada
-  if (SEARXNG_URL) {
-    const url = `${SEARXNG_URL.replace(/\/$/, '')}/search`;
-    const params = new URLSearchParams({
-      q: termo,
-      format: 'json',
-      language: 'pt-BR',
-      safesearch: '1',
-    });
-
-    const headers = { 'Accept': 'application/json' };
-    if (SEARXNG_API_KEY) {
-      headers['Authorization'] = `Bearer ${SEARXNG_API_KEY}`;
-    }
-
-    try {
-      const res = await fetch(`${url}?${params}`, { headers, signal: AbortSignal.timeout(8000) });
-
-      if (res.ok) {
-        const data = await res.json();
-        const results = data.results || [];
-
-        if (results.length > 0) {
-          return normalizarResultados(results.slice(0, 10), 'searxng');
-        }
-        console.warn(`[SEARXNG-self] HTTP 200 sem resultados (JSON vazio)`);
-      } else {
-        console.warn(`[SEARXNG-self] HTTP ${res.status}`);
-      }
-    } catch (e) {
-      console.warn(`[SEARXNG-self] error: ${e.message}`);
-    }
-  } else {
-    console.warn('[SEARXNG-self] SEARXNG_URL não configurado — usando instâncias comunitárias');
+  if (!SEARXNG_URL) {
+    console.warn('[SEARXNG] SEARXNG_URL não configurado — a Busca Web fica indisponível (Base de Atividades apenas)');
+    return null;
   }
 
-  // 2º: Tenta instâncias comunitárias
-  for (const instance of instances) {
-    try {
-      const url = `${instance.replace(/\/$/, '')}/search`;
-      const params = new URLSearchParams({
-        q: termo,
-        format: 'json',
-        language: 'pt-BR',
-        safesearch: '1',
-      });
+  const url = `${SEARXNG_URL.replace(/\/$/, '')}/search`;
+  const params = new URLSearchParams({
+    q: termo,
+    format: 'json',
+    language: 'pt-BR',
+    locale: 'pt-BR',
+    safesearch: '1',
+  });
 
-      const res = await fetch(`${url}?${params}`, {
-        signal: AbortSignal.timeout(8000),
-      });
+  const headers = { 'Accept': 'application/json' };
+  if (user && senha) {
+    headers['Authorization'] = `Basic ${Buffer.from(`${user}:${senha}`).toString('base64')}`;
+  }
 
-      if (res.ok) {
-        const data = await res.json();
-        const results = data.results || [];
+  try {
+    const res = await fetch(`${url}?${params}`, { headers, signal: AbortSignal.timeout(8000) });
 
-        if (results.length > 0) {
-          console.log(`[SEARXNG-community] ${instance} retornou ${results.length} resultados`);
-          return normalizarResultados(results.slice(0, 10), 'searxng-community');
-        }
-        console.warn(`[SEARXNG-community] ${instance} HTTP 200 sem resultados (JSON vazio)`);
-      } else {
-        console.warn(`[SEARXNG-community] ${instance} HTTP ${res.status}`);
+    if (res.ok) {
+      const data = await res.json();
+      const results = data.results || [];
+
+      if (results.length > 0) {
+        // Filtra scripts não-latinos ANTES de limitar a 10: se os primeiros
+        // resultados crus fossem descartados depois, perderíamos os válidos.
+        return normalizarResultados(results, 'searxng').slice(0, 10);
       }
-    } catch (e) {
-      console.warn(`[SEARXNG-community] ${instance} error: ${e.message}`);
+      console.warn('[SEARXNG] HTTP 200 sem resultados (JSON vazio)');
+    } else {
+      console.warn(`[SEARXNG] HTTP ${res.status}`);
     }
+  } catch (e) {
+    console.warn(`[SEARXNG] error: ${e.message}`);
   }
 
   return null;
@@ -187,7 +161,7 @@ function extrairTermoDaMensagem(mensagem) {
 async function buscarPorTermo(termo) {
   console.log(`[SEARCH] Buscando: "${termo}"`);
 
-  // 1º: SearXNG (self-hosted ou comunidade)
+  // 1º: Instância SearXNG Própria (única provedora — ADR-0006)
   let resultsSearXNG = null;
   try {
     resultsSearXNG = await buscarSearXNG(termo);
@@ -199,8 +173,9 @@ async function buscarPorTermo(termo) {
     return resultsSearXNG;
   }
 
-  // 2º: Sem fallback Bing — retorna vazio se SearXNG falhar
-  console.log('[SEARCH] Sem resultados de busca (SearXNG indisponível)');
+  // 2º: Sem fallback — retorna vazio se a Instância falhar; o fluxo
+  // segue só com a Base de Atividades.
+  console.log('[SEARCH] Sem resultados de busca (Instância SearXNG indisponível)');
   return [];
 }
 

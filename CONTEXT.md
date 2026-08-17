@@ -37,8 +37,12 @@ Lista de atividades filtrada por bairro e interesses do usuário, curada pela IA
 _Avoid_: sugestão, dica
 
 **Busca Web**:
-Consulta em tempo real (SearXNG próprio ou comunitário) acionada sempre que o usuário pede atividades; os Resultados da Busca passam pela curadoria da IA antes de virar Recomendação.
-_Avoid_: pesquisa online, raspagem
+Consulta em tempo real na Instância SearXNG Própria, acionada sempre que o usuário pede atividades; os Resultados da Busca passam pela curadoria da IA antes de virar Recomendação. Se a Instância estiver indisponível, a Recomendação sai só da Base de Atividades.
+_Avoid_: pesquisa online, raspagem, instância comunitária
+
+**Instância SearXNG Própria**:
+Servidor SearXNG do operador (contêiner Docker dedicado) exposto via túnel com HTTPS e acessível apenas ao Amparo por credencial; único provedor de Resultados da Busca.
+_Avoid_: SearXNG comunitário, instância pública
 
 **Resultado da Busca**:
 Item não curado retornado pela Busca Web (nome, descrição, link, fonte), que precisa passar pela curadoria da IA antes de virar Recomendação.

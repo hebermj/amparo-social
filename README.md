@@ -112,9 +112,11 @@ OPENROUTER_API_KEY=
 # Recomendado — memória persistente por usuário (PostgreSQL)
 DATABASE_URL=postgresql://user:***@host:5432/amparo_social
 
-# Opcional — busca web (instância SearXNG própria ou comunitária)
+# Recomendado — busca web (Instância SearXNG Própria, único provedor)
+# Sem fallback comunitário; se a Instância cair, a Recomendação sai só da Base.
 SEARXNG_URL=
-SEARXNG_API_KEY=
+SEARXNG_USER=
+SEARXNG_PASSWORD=
 
 # Opcional — cidade padrão para novos usuários
 CIDADE_PADRAO=Santo André
