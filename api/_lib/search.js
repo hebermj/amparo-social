@@ -4,23 +4,28 @@
  *
  * Ordem de tentativa:
  *   1. SearXNG self-hosted (configurado via SEARXNG_URL)
- *   2. SearXNG comunitário — instâncias públicas de searx.space
- *   3. Mensagem amigável se todos falharem
+ *   2. SearXNG comunitário — instâncias públicas que aceitam format=json
+ *   3. Lista vazia (o fluxo segue só com a Base de Atividades)
  */
 
-const SEARXNG_URL = process.env.SEARXNG_URL; // ex: "http://192.168.1.100:4000"
-const SEARXNG_API_KEY = process.env.SEARXNG_API_KEY;
 const CIDADE_PADRAO = process.env.CIDADE_PADRAO || '';
 
-/* Instâncias públicas da SearXNG (instâncias comunitárias, sem chave API necessária).
-   Mais instâncias são tentadas se a primeira falhar.
+/* Instâncias públicas da SearXNG (instâncias comunitárias, sem chave API).
+   A lista default contém apenas instâncias verificadas que respondem
+   format=json com resultados (checadas em 2026-08). Pode ser sobrescrita
+   via SEARXNG_COMMUNITY_INSTANCES (separadas por vírgula).
  */
-const SEARXNG_COMMUNITY_INSTANCES = [
-  'https://searx.space',
-  'https://searxng.org',
-  'https://search.privacytools.info',
-  'https://searx.be',
+const SEARXNG_COMMUNITY_INSTANCES_DEFAULT = [
+  'https://search.mectov.my.id',
 ];
+
+function lerCommunityInstances() {
+  const custom = process.env.SEARXNG_COMMUNITY_INSTANCES;
+  if (custom) {
+    return custom.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return SEARXNG_COMMUNITY_INSTANCES_DEFAULT;
+}
 
 /**
  * Normaliza os resultados dos diferentes provedores para um formato único.
@@ -49,6 +54,10 @@ function normalizarResultados(items, fonte) {
  * Endpoint: GET /search?q=...&format=json&language=pt-BR
  */
 async function buscarSearXNG(termo) {
+  const SEARXNG_URL = process.env.SEARXNG_URL;
+  const SEARXNG_API_KEY = process.env.SEARXNG_API_KEY;
+  const instances = lerCommunityInstances();
+
   // 1º: Tenta a URL self-hosted configurada
   if (SEARXNG_URL) {
     const url = `${SEARXNG_URL.replace(/\/$/, '')}/search`;
@@ -64,22 +73,29 @@ async function buscarSearXNG(termo) {
       headers['Authorization'] = `Bearer ${SEARXNG_API_KEY}`;
     }
 
-    const res = await fetch(`${url}?${params}`, { headers, signal: AbortSignal.timeout(8000) });
+    try {
+      const res = await fetch(`${url}?${params}`, { headers, signal: AbortSignal.timeout(8000) });
 
-    if (res.ok) {
-      const data = await res.json();
-      const results = data.results || [];
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || [];
 
-      if (results.length > 0) {
-        return normalizarResultados(results.slice(0, 10), 'searxng');
+        if (results.length > 0) {
+          return normalizarResultados(results.slice(0, 10), 'searxng');
+        }
+        console.warn(`[SEARXNG-self] HTTP 200 sem resultados (JSON vazio)`);
+      } else {
+        console.warn(`[SEARXNG-self] HTTP ${res.status}`);
       }
-    } else {
-      console.warn(`[SEARXNG-self] HTTP ${res.status}`);
+    } catch (e) {
+      console.warn(`[SEARXNG-self] error: ${e.message}`);
     }
+  } else {
+    console.warn('[SEARXNG-self] SEARXNG_URL não configurado — usando instâncias comunitárias');
   }
 
   // 2º: Tenta instâncias comunitárias
-  for (const instance of SEARXNG_COMMUNITY_INSTANCES) {
+  for (const instance of instances) {
     try {
       const url = `${instance.replace(/\/$/, '')}/search`;
       const params = new URLSearchParams({
@@ -101,6 +117,7 @@ async function buscarSearXNG(termo) {
           console.log(`[SEARXNG-community] ${instance} retornou ${results.length} resultados`);
           return normalizarResultados(results.slice(0, 10), 'searxng-community');
         }
+        console.warn(`[SEARXNG-community] ${instance} HTTP 200 sem resultados (JSON vazio)`);
       } else {
         console.warn(`[SEARXNG-community] ${instance} HTTP ${res.status}`);
       }
