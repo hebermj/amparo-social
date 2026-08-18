@@ -6,6 +6,11 @@
 **Data:** Agosto de 2026  
 **Autor:** Heber
 
+> **Nota de encerramento (ago/2026):** a produção foi desligada — Vercel, Neon
+> e Tailscale (Funnel) foram removidos. Este documento permanece como registro
+> histórico dos requisitos; as referências a essas plataformas refletem a
+> implementação original.
+
 ---
 
 ## 1. Introdução

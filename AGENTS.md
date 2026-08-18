@@ -11,3 +11,10 @@ Five canonical triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Secrets
+
+Nunca commitar credenciais reais. `.gitignore` bloqueia `.env*` e `.vercel`;
+só placeholders vão em `.env.example`. Antes de qualquer commit, revise `git
+status`/`git diff` para confirmar que nenhuma chave, token ou URL de serviço
+real (Telegram, LLM, banco, túneis) entrou no índice.

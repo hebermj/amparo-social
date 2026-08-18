@@ -81,7 +81,7 @@ function parseTools(reply) {
 // ── Lembretes Proativos (cron) ────────────────────────────────
 
 /**
- * Executado pelo Vercel Cron (User-Agent: vercel-cron/1.0).
+ * Executado por um agendador externo (sem acoplamento a serviço específico).
  * Para cada sessão devida (horário preferido == hora atual, ainda não
  * notificada hoje), envia um Lembrete Proativo com a atividade futura
  * mais próxima. Idempotente: marca ultimoLembreteEm.
@@ -170,21 +170,6 @@ async function executarIncentivos(now) {
 // ── Handler Principal ──────────────────────────────────────────
 
 module.exports = async (req, res) => {
-  // Vercel Cron dispara um GET (não POST) com User-Agent "vercel-cron/1.0"
-  // e o header x-vercel-cron-schedule. Verificamos antes do gate de método.
-  const ehCron = req.headers['user-agent']?.includes('vercel-cron');
-
-  if (ehCron) {
-    try {
-      const lembretes = await executarLembretes(new Date());
-      const incentivos = await executarIncentivos(new Date());
-      return res.status(200).json({ status: 'cron', lembretes, incentivos });
-    } catch (err) {
-      console.error('[CRON ERROR]', err.message);
-      return res.status(200).json({ status: 'cron_error', error: err.message });
-    }
-  }
-
   if (req.method !== 'POST') {
     return res.status(200).json({ status: 'ok' });
   }

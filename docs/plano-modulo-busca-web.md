@@ -1,5 +1,9 @@
 # Plano: Módulo de Busca Web para Atividades
 
+> **Nota de encerramento (ago/2026):** produção desligada — a Instância
+> SearXNG Própria (Tailscale Funnel) foi removida. O plano segue como registro
+> histórico do pipeline implementado.
+
 > **Status: implementado** — descreve o pipeline **Busca sempre + Curadoria da IA**
 > entregue nos tickets T1–T3 (spec #9). Substitui o plano original que previa
 > fallback via Bing API e marcador `[[BUSCAR:]]` — ambos removidos (ver ADR-0005).

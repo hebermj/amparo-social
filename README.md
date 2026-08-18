@@ -26,7 +26,7 @@ baseadas no perfil de cada usuário e incentiva a participação social.
 Usuário (Telegram)
    │
    ▼
-Webhook (Vercel Serverless — api/webhook.js)
+Webhook (api/webhook.js — servidor Node)
    │
    ├── Comandos diretos: /start
    │
@@ -65,7 +65,7 @@ texto amigável para o idoso.
 
 ```
 api/
-├── webhook.js          → Handler principal do Telegram (Vercel)
+├── webhook.js          → Handler principal do Telegram
 └── _lib/
     ├── db.js           → Persistência PostgreSQL (memória por usuário)
     ├── llm.js          → Gateway LLM com fallback entre provedores
@@ -84,17 +84,17 @@ data/
 
 ## 🚀 Deploy
 
-Hospedado na **Vercel** como função serverless. O bot responde a updates do
-Telegram via webhook.
+Hospede em qualquer servidor Node (VPS, máquina local ou serverless). O bot
+responde a updates do Telegram via webhook.
 
 1. Crie um bot com o [@BotFather](https://t.me/BotFather) e copie o token.
-2. Implante o repositório na Vercel.
+2. Rode o código num servidor que exponha `api/webhook.js` via HTTPS.
 3. Configure o webhook do Telegram:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<SEU_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://SEU_DOMINIO.vercel.app/api/webhook"}'
+  -d '{"url":"https://SEU_DOMINIO/api/webhook"}'
 ```
 
 4. Defina as variáveis de ambiente (veja abaixo).
